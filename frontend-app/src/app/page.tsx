@@ -1,10 +1,30 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-const API_URL =
+
+/* ============================================================
+   API URL
+   ============================================================ */
+
+const API_URL = (
   process.env.NEXT_PUBLIC_API_URL ||
-  "http://127.0.0.1:8000";
+  (
+    process.env.NODE_ENV === "development"
+      ? "http://127.0.0.1:8000"
+      : "https://peopleos-7c5b.onrender.com"
+  )
+).replace(/\/+$/, "");
+
+
+/* ============================================================
+   TYPES
+   ============================================================ */
 
 type Employee = {
   id: number;
@@ -25,6 +45,7 @@ type Employee = {
   updated_at: string;
 };
 
+
 type Analytics = {
   total_employees: number;
   active_employees: number;
@@ -32,10 +53,20 @@ type Analytics = {
   status_active: number;
   status_inactive: number;
   average_performance_score: number | null;
-  department_breakdown: Record<string, number>;
-  employment_type_breakdown: Record<string, number>;
-  location_breakdown: Record<string, number>;
+  department_breakdown: Record<
+    string,
+    number
+  >;
+  employment_type_breakdown: Record<
+    string,
+    number
+  >;
+  location_breakdown: Record<
+    string,
+    number
+  >;
 };
+
 
 type EmployeeForm = {
   employee_id: string;
@@ -53,7 +84,12 @@ type EmployeeForm = {
   is_active: boolean;
 };
 
-const emptyForm: EmployeeForm = {
+
+/* ============================================================
+   EMPTY FORM
+   ============================================================ */
+
+const EMPTY_FORM: EmployeeForm = {
   employee_id: "",
   full_name: "",
   email: "",
@@ -69,157 +105,314 @@ const emptyForm: EmployeeForm = {
   is_active: true,
 };
 
+
+/* ============================================================
+   API HELPER
+   ============================================================ */
+
+async function apiRequest<T>(
+  path: string,
+  options?: RequestInit
+): Promise<T> {
+
+  const response = await fetch(
+    `${API_URL}${path}`,
+    {
+      ...options,
+
+      cache: "no-store",
+
+      headers: {
+        Accept: "application/json",
+        ...(options?.headers || {}),
+      },
+    }
+  );
+
+
+  let data: unknown = null;
+
+
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
+  }
+
+
+  if (!response.ok) {
+
+    if (
+      typeof data === "object" &&
+      data !== null &&
+      "detail" in data
+    ) {
+      throw new Error(
+        String(
+          (
+            data as {
+              detail: unknown;
+            }
+          ).detail
+        )
+      );
+    }
+
+
+    throw new Error(
+      `PeopleOS API returned ${response.status}`
+    );
+  }
+
+
+  return data as T;
+}
+
+
+/* ============================================================
+   PAGE
+   ============================================================ */
+
 export default function Home() {
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [analytics, setAnalytics] =
-    useState<Analytics | null>(null);
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [
+    employees,
+    setEmployees,
+  ] = useState<Employee[]>([]);
 
-  const [search, setSearch] = useState("");
-  const [departmentFilter, setDepartmentFilter] =
-    useState("All");
-  const [statusFilter, setStatusFilter] =
-    useState("All");
 
-  const [showModal, setShowModal] = useState(false);
-  const [editingEmployee, setEditingEmployee] =
-    useState<Employee | null>(null);
+  const [
+    analytics,
+    setAnalytics,
+  ] = useState<Analytics | null>(null);
 
-  const [form, setForm] =
-    useState<EmployeeForm>(emptyForm);
 
-  const [formError, setFormError] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] =
-    useState<number | null>(null);
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
 
-  // ==========================================================
-  // LOAD EMPLOYEES + ANALYTICS
-  // ==========================================================
+
+  const [
+    error,
+    setError,
+  ] = useState("");
+
+
+  const [
+    search,
+    setSearch,
+  ] = useState("");
+
+
+  const [
+    departmentFilter,
+    setDepartmentFilter,
+  ] = useState("All");
+
+
+  const [
+    statusFilter,
+    setStatusFilter,
+  ] = useState("All");
+
+
+  const [
+    showModal,
+    setShowModal,
+  ] = useState(false);
+
+
+  const [
+    editingEmployee,
+    setEditingEmployee,
+  ] = useState<Employee | null>(null);
+
+
+  const [
+    form,
+    setForm,
+  ] = useState<EmployeeForm>(
+    EMPTY_FORM
+  );
+
+
+  const [
+    formError,
+    setFormError,
+  ] = useState("");
+
+
+  const [
+    saving,
+    setSaving,
+  ] = useState(false);
+
+
+  const [
+    deletingId,
+    setDeletingId,
+  ] = useState<number | null>(null);
+
+
+  /* ==========================================================
+     LOAD DASHBOARD
+     ========================================================== */
 
   async function loadDashboard() {
+
     try {
+
       setLoading(true);
       setError("");
 
+
       const [
-        employeesResponse,
-        analyticsResponse,
+        employeeData,
+        analyticsData,
       ] = await Promise.all([
-        fetch(
-          `${API_URL}/employees?skip=0&limit=100`,
-          {
-            cache: "no-store",
-          }
+
+        apiRequest<Employee[]>(
+          "/employees?skip=0&limit=100"
         ),
-        fetch(
-          `${API_URL}/analytics/summary`,
-          {
-            cache: "no-store",
-          }
+
+        apiRequest<Analytics>(
+          "/analytics/summary"
         ),
       ]);
 
-      if (!employeesResponse.ok) {
-        throw new Error(
-          `Employees API error: ${employeesResponse.status}`
-        );
-      }
 
-      if (!analyticsResponse.ok) {
-        throw new Error(
-          `Analytics API error: ${analyticsResponse.status}`
-        );
-      }
-
-      const employeeData: Employee[] =
-        await employeesResponse.json();
-
-      const analyticsData: Analytics =
-        await analyticsResponse.json();
-
-      setEmployees(employeeData);
-      setAnalytics(analyticsData);
-    } catch (err) {
-      console.error("Dashboard error:", err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to connect to PeopleOS API."
+      setEmployees(
+        employeeData
       );
+
+
+      setAnalytics(
+        analyticsData
+      );
+
+    } catch (err) {
+
+      console.error(
+        "PeopleOS API error:",
+        err
+      );
+
+
+      if (err instanceof Error) {
+
+        setError(
+          `${err.message} — API: ${API_URL}`
+        );
+
+      } else {
+
+        setError(
+          `Unable to connect to PeopleOS API — API: ${API_URL}`
+        );
+      }
+
     } finally {
+
       setLoading(false);
     }
   }
+
+
+  /* ==========================================================
+     INITIAL LOAD
+     ========================================================== */
 
   useEffect(() => {
     loadDashboard();
   }, []);
 
-  // ==========================================================
-  // DEPARTMENTS
-  // ==========================================================
+
+  /* ==========================================================
+     DEPARTMENTS
+     ========================================================== */
 
   const departments = useMemo(() => {
+
     if (!analytics) {
       return [];
     }
 
+
     return Object.keys(
       analytics.department_breakdown
     ).sort();
+
   }, [analytics]);
 
-  // ==========================================================
-  // FILTERED EMPLOYEES
-  // ==========================================================
+
+  /* ==========================================================
+     FILTERED EMPLOYEES
+     ========================================================== */
 
   const filteredEmployees = useMemo(() => {
-    const text = search.toLowerCase().trim();
 
-    return employees.filter((employee) => {
-      const matchesSearch =
-        !text ||
-        employee.full_name
-          .toLowerCase()
-          .includes(text) ||
-        employee.employee_id
-          .toLowerCase()
-          .includes(text) ||
-        employee.email
-          .toLowerCase()
-          .includes(text) ||
-        employee.department
-          .toLowerCase()
-          .includes(text) ||
-        employee.designation
-          .toLowerCase()
-          .includes(text) ||
-        (employee.skills ?? "")
-          .toLowerCase()
-          .includes(text);
+    const query =
+      search
+        .trim()
+        .toLowerCase();
 
-      const matchesDepartment =
-        departmentFilter === "All" ||
-        employee.department ===
-          departmentFilter;
 
-      const matchesStatus =
-        statusFilter === "All" ||
-        (statusFilter === "Active" &&
-          employee.is_active) ||
-        (statusFilter === "Inactive" &&
-          !employee.is_active);
+    return employees.filter(
+      (employee) => {
 
-      return (
-        matchesSearch &&
-        matchesDepartment &&
-        matchesStatus
-      );
-    });
+        const matchesSearch =
+          !query ||
+          employee.employee_id
+            .toLowerCase()
+            .includes(query) ||
+          employee.full_name
+            .toLowerCase()
+            .includes(query) ||
+          employee.email
+            .toLowerCase()
+            .includes(query) ||
+          employee.department
+            .toLowerCase()
+            .includes(query) ||
+          employee.designation
+            .toLowerCase()
+            .includes(query) ||
+          (
+            employee.skills ?? ""
+          )
+            .toLowerCase()
+            .includes(query);
+
+
+        const matchesDepartment =
+          departmentFilter === "All" ||
+          employee.department ===
+            departmentFilter;
+
+
+        const matchesStatus =
+          statusFilter === "All" ||
+          (
+            statusFilter ===
+              "Active" &&
+            employee.is_active
+          ) ||
+          (
+            statusFilter ===
+              "Inactive" &&
+            !employee.is_active
+          );
+
+
+        return (
+          matchesSearch &&
+          matchesDepartment &&
+          matchesStatus
+        );
+      }
+    );
+
   }, [
     employees,
     search,
@@ -227,140 +420,215 @@ export default function Home() {
     statusFilter,
   ]);
 
-  // ==========================================================
-  // FORM HELPERS
-  // ==========================================================
 
-  function updateForm(
+  /* ==========================================================
+     FORM HELPERS
+     ========================================================== */
+
+  function setField(
     field: keyof EmployeeForm,
     value: string | boolean
   ) {
-    setForm((current) => ({
-      ...current,
-      [field]: value,
-    }));
+
+    setForm(
+      (current) => ({
+        ...current,
+        [field]: value,
+      })
+    );
   }
+
 
   function openAddModal() {
-    setEditingEmployee(null);
-    setForm({ ...emptyForm });
-    setFormError("");
-    setShowModal(true);
-  }
 
-  function openEditModal(employee: Employee) {
-    setEditingEmployee(employee);
+    setEditingEmployee(null);
 
     setForm({
-      employee_id: employee.employee_id,
-      full_name: employee.full_name,
-      email: employee.email,
-      department: employee.department,
-      designation: employee.designation,
-      employment_type:
-        employee.employment_type,
-      date_of_joining:
-        employee.date_of_joining,
-      status: employee.status,
-      location: employee.location ?? "",
-      manager: employee.manager ?? "",
-      performance_score:
-        employee.performance_score !== null
-          ? String(employee.performance_score)
-          : "",
-      skills: employee.skills ?? "",
-      is_active: employee.is_active,
+      ...EMPTY_FORM,
     });
 
     setFormError("");
     setShowModal(true);
   }
 
+
+  function openEditModal(
+    employee: Employee
+  ) {
+
+    setEditingEmployee(
+      employee
+    );
+
+
+    setForm({
+
+      employee_id:
+        employee.employee_id,
+
+      full_name:
+        employee.full_name,
+
+      email:
+        employee.email,
+
+      department:
+        employee.department,
+
+      designation:
+        employee.designation,
+
+      employment_type:
+        employee.employment_type,
+
+      date_of_joining:
+        employee.date_of_joining
+          .slice(0, 10),
+
+      status:
+        employee.status,
+
+      location:
+        employee.location ?? "",
+
+      manager:
+        employee.manager ?? "",
+
+      performance_score:
+        employee.performance_score ===
+        null
+          ? ""
+          : String(
+              employee.performance_score
+            ),
+
+      skills:
+        employee.skills ?? "",
+
+      is_active:
+        employee.is_active,
+    });
+
+
+    setFormError("");
+    setShowModal(true);
+  }
+
+
   function closeModal() {
+
     if (saving) {
       return;
     }
 
+
     setShowModal(false);
+
     setEditingEmployee(null);
-    setForm({ ...emptyForm });
+
+    setForm({
+      ...EMPTY_FORM,
+    });
+
     setFormError("");
   }
 
-  // ==========================================================
-  // CREATE / UPDATE
-  // ==========================================================
+
+  /* ==========================================================
+     CREATE / UPDATE
+     ========================================================== */
 
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>
   ) {
+
     event.preventDefault();
 
     setFormError("");
+
+
+    if (!form.employee_id.trim()) {
+      setFormError(
+        "Employee ID is required."
+      );
+      return;
+    }
+
+
+    if (!form.full_name.trim()) {
+      setFormError(
+        "Full name is required."
+      );
+      return;
+    }
+
+
+    if (!form.email.trim()) {
+      setFormError(
+        "Email is required."
+      );
+      return;
+    }
+
+
+    if (!form.department.trim()) {
+      setFormError(
+        "Department is required."
+      );
+      return;
+    }
+
+
+    if (!form.designation.trim()) {
+      setFormError(
+        "Designation is required."
+      );
+      return;
+    }
+
+
+    if (!form.date_of_joining) {
+      setFormError(
+        "Date of joining is required."
+      );
+      return;
+    }
+
+
+    const performanceScore =
+      form.performance_score.trim() === ""
+        ? null
+        : Number(
+            form.performance_score
+          );
+
+
+    if (
+      performanceScore !== null &&
+      (
+        !Number.isFinite(
+          performanceScore
+        ) ||
+        performanceScore < 0 ||
+        performanceScore > 100
+      )
+    ) {
+
+      setFormError(
+        "Performance score must be between 0 and 100."
+      );
+
+      return;
+    }
+
+
     setSaving(true);
 
+
     try {
-      if (!form.employee_id.trim()) {
-        throw new Error(
-          "Employee ID is required."
-        );
-      }
-
-      if (!form.full_name.trim()) {
-        throw new Error(
-          "Full name is required."
-        );
-      }
-
-      if (!form.email.trim()) {
-        throw new Error(
-          "Email is required."
-        );
-      }
-
-      if (!form.department.trim()) {
-        throw new Error(
-          "Department is required."
-        );
-      }
-
-      if (!form.designation.trim()) {
-        throw new Error(
-          "Designation is required."
-        );
-      }
-
-      if (!form.date_of_joining) {
-        throw new Error(
-          "Date of joining is required."
-        );
-      }
-
-      let performanceScore:
-        | number
-        | null = null;
-
-      if (
-        form.performance_score.trim() !== ""
-      ) {
-        const parsedScore = Number(
-          form.performance_score
-        );
-
-        if (
-          Number.isNaN(parsedScore) ||
-          parsedScore < 0 ||
-          parsedScore > 100
-        ) {
-          throw new Error(
-            "Performance score must be between 0 and 100."
-          );
-        }
-
-        performanceScore = parsedScore;
-      }
 
       const payload = {
+
         employee_id:
           form.employee_id.trim(),
 
@@ -386,164 +654,172 @@ export default function Home() {
           form.status,
 
         location:
-          form.location.trim() || null,
+          form.location.trim() ||
+          null,
 
         manager:
-          form.manager.trim() || null,
+          form.manager.trim() ||
+          null,
 
         performance_score:
           performanceScore,
 
         skills:
-          form.skills.trim() || null,
+          form.skills.trim() ||
+          null,
 
         is_active:
           form.is_active,
       };
 
-      const url = editingEmployee
-        ? `${API_URL}/employees/${editingEmployee.id}`
-        : `${API_URL}/employees`;
 
-      const method = editingEmployee
-        ? "PUT"
-        : "POST";
+      if (editingEmployee) {
 
-      const response = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+        await apiRequest<Employee>(
+          `/employees/${editingEmployee.id}`,
+          {
+            method: "PUT",
 
-      let data: unknown = null;
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
 
-      try {
-        data = await response.json();
-      } catch {
-        data = null;
+            body:
+              JSON.stringify(
+                payload
+              ),
+          }
+        );
+
+      } else {
+
+        await apiRequest<Employee>(
+          "/employees",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify(
+                payload
+              ),
+          }
+        );
       }
 
-      if (!response.ok) {
-        let detail =
-          "Unable to save employee.";
-
-        if (
-          typeof data === "object" &&
-          data !== null &&
-          "detail" in data
-        ) {
-          detail = String(
-            (data as { detail: unknown })
-              .detail
-          );
-        }
-
-        throw new Error(detail);
-      }
 
       closeModal();
+
       await loadDashboard();
+
     } catch (err) {
-      console.error("Save error:", err);
+
+      console.error(
+        "Save employee error:",
+        err
+      );
+
 
       setFormError(
         err instanceof Error
           ? err.message
           : "Unable to save employee."
       );
+
     } finally {
+
       setSaving(false);
     }
   }
 
-  // ==========================================================
-  // DELETE
-  // ==========================================================
+
+  /* ==========================================================
+     DELETE
+     ========================================================== */
 
   async function handleDelete(
     employee: Employee
   ) {
-    const confirmed = window.confirm(
-      `Are you sure you want to delete ${employee.full_name}?`
-    );
+
+    const confirmed =
+      window.confirm(
+        `Are you sure you want to delete ${employee.full_name}?`
+      );
+
 
     if (!confirmed) {
       return;
     }
 
-    try {
-      setDeletingId(employee.id);
-      setError("");
 
-      const response = await fetch(
-        `${API_URL}/employees/${employee.id}`,
+    setDeletingId(
+      employee.id
+    );
+
+    setError("");
+
+
+    try {
+
+      await apiRequest<{
+        message: string;
+        employee_id: number;
+      }>(
+        `/employees/${employee.id}`,
         {
           method: "DELETE",
         }
       );
 
-      let data: unknown = null;
-
-      try {
-        data = await response.json();
-      } catch {
-        data = null;
-      }
-
-      if (!response.ok) {
-        let detail =
-          "Unable to delete employee.";
-
-        if (
-          typeof data === "object" &&
-          data !== null &&
-          "detail" in data
-        ) {
-          detail = String(
-            (data as { detail: unknown })
-              .detail
-          );
-        }
-
-        throw new Error(detail);
-      }
 
       await loadDashboard();
+
     } catch (err) {
-      console.error("Delete error:", err);
+
+      console.error(
+        "Delete employee error:",
+        err
+      );
+
 
       setError(
         err instanceof Error
           ? err.message
           : "Unable to delete employee."
       );
+
     } finally {
+
       setDeletingId(null);
     }
   }
 
-  // ==========================================================
-  // BAR WIDTH
-  // ==========================================================
 
-  function getBarWidth(
+  /* ==========================================================
+     BAR WIDTH
+     ========================================================== */
+
+  function barWidth(
     value: number,
     data: Record<string, number>
   ) {
-    const values = Object.values(data);
 
-    if (!values.length) {
+    const maximum =
+      Math.max(
+        ...Object.values(data),
+        0
+      );
+
+
+    if (!maximum) {
       return 0;
     }
 
-    const maximum = Math.max(...values);
-
-    if (maximum === 0) {
-      return 0;
-    }
 
     return Math.max(
       (value / maximum) * 100,
@@ -551,16 +827,38 @@ export default function Home() {
     );
   }
 
-  // ==========================================================
-  // RENDER
-  // ==========================================================
+
+  /* ==========================================================
+     LOADING
+     ========================================================== */
+
+  if (
+    loading &&
+    !analytics
+  ) {
+
+    return (
+      <main className="dashboard">
+
+        <div className="message-card">
+          Loading PeopleOS data...
+        </div>
+
+      </main>
+    );
+  }
+
+
+  /* ==========================================================
+     PAGE
+     ========================================================== */
 
   return (
     <main className="dashboard">
 
       {/* ======================================================
           HEADER
-      ====================================================== */}
+          ====================================================== */}
 
       <header className="topbar">
 
@@ -571,19 +869,29 @@ export default function Home() {
           </div>
 
           <div>
-            <h1>PeopleOS</h1>
+
+            <h1>
+              PeopleOS
+            </h1>
 
             <p>
-              HR Analytics & Employee Management
+              HR Analytics &
+              Employee Management
             </p>
+
           </div>
 
         </div>
 
+
         <button
           className="refresh-button"
-          onClick={loadDashboard}
-          disabled={loading}
+          onClick={
+            loadDashboard
+          }
+          disabled={
+            loading
+          }
         >
           {loading
             ? "Loading..."
@@ -592,11 +900,13 @@ export default function Home() {
 
       </header>
 
+
       {/* ======================================================
-          API ERROR
-      ====================================================== */}
+          ERROR
+          ====================================================== */}
 
       {error && (
+
         <div className="error-message">
 
           <strong>
@@ -618,25 +928,14 @@ export default function Home() {
         </div>
       )}
 
-      {/* ======================================================
-          LOADING
-      ====================================================== */}
 
-      {loading && !analytics && (
-        <div className="message-card">
-          Loading PeopleOS data...
-        </div>
-      )}
+      {analytics && (
 
-      {/* ======================================================
-          DASHBOARD
-      ====================================================== */}
-
-      {!loading && analytics && (
         <>
+
           {/* ==================================================
               KPI CARDS
-          ================================================== */}
+              ================================================== */}
 
           <section className="stats-grid">
 
@@ -655,7 +954,9 @@ export default function Home() {
               </div>
 
               <strong>
-                {analytics.total_employees}
+                {
+                  analytics.total_employees
+                }
               </strong>
 
               <small>
@@ -663,6 +964,7 @@ export default function Home() {
               </small>
 
             </div>
+
 
             <div className="stat-card">
 
@@ -679,7 +981,9 @@ export default function Home() {
               </div>
 
               <strong>
-                {analytics.active_employees}
+                {
+                  analytics.active_employees
+                }
               </strong>
 
               <small>
@@ -687,6 +991,7 @@ export default function Home() {
               </small>
 
             </div>
+
 
             <div className="stat-card">
 
@@ -703,7 +1008,9 @@ export default function Home() {
               </div>
 
               <strong>
-                {analytics.inactive_employees}
+                {
+                  analytics.inactive_employees
+                }
               </strong>
 
               <small>
@@ -711,6 +1018,7 @@ export default function Home() {
               </small>
 
             </div>
+
 
             <div className="stat-card">
 
@@ -727,8 +1035,10 @@ export default function Home() {
               </div>
 
               <strong>
-                {analytics.average_performance_score ??
-                  0}
+                {
+                  analytics.average_performance_score ??
+                  0
+                }
               </strong>
 
               <small>
@@ -739,9 +1049,10 @@ export default function Home() {
 
           </section>
 
+
           {/* ==================================================
               ANALYTICS
-          ================================================== */}
+              ================================================== */}
 
           <section className="analytics-grid">
 
@@ -752,6 +1063,7 @@ export default function Home() {
               <div className="panel-header">
 
                 <div>
+
                   <h2>
                     Department Breakdown
                   </h2>
@@ -759,60 +1071,83 @@ export default function Home() {
                   <p>
                     Workforce distribution by department
                   </p>
+
                 </div>
 
               </div>
 
+
               <div className="chart-list">
 
-                {Object.entries(
-                  analytics.department_breakdown
-                ).length > 0 ? (
+                {
                   Object.entries(
                     analytics.department_breakdown
-                  ).map(
-                    ([department, count]) => (
-                      <div
-                        className="chart-item"
-                        key={department}
-                      >
-                        <div className="chart-item-top">
+                  ).length > 0 ? (
 
-                          <span>
-                            {department}
-                          </span>
+                    Object.entries(
+                      analytics.department_breakdown
+                    ).map(
+                      (
+                        [
+                          department,
+                          count,
+                        ]
+                      ) => (
 
-                          <strong>
-                            {count}
-                          </strong>
+                        <div
+                          className="chart-item"
+                          key={
+                            department
+                          }
+                        >
+
+                          <div className="chart-item-top">
+
+                            <span>
+                              {
+                                department
+                              }
+                            </span>
+
+                            <strong>
+                              {count}
+                            </strong>
+
+                          </div>
+
+
+                          <div className="bar-track">
+
+                            <div
+                              className="bar-fill blue-fill"
+                              style={{
+                                width:
+                                  `${barWidth(
+                                    count,
+                                    analytics.department_breakdown
+                                  )}%`,
+                              }}
+                            />
+
+                          </div>
 
                         </div>
-
-                        <div className="bar-track">
-
-                          <div
-                            className="bar-fill blue-fill"
-                            style={{
-                              width: `${getBarWidth(
-                                count,
-                                analytics.department_breakdown
-                              )}%`,
-                            }}
-                          />
-
-                        </div>
-                      </div>
+                      )
                     )
+
+                  ) : (
+
+                    <div className="empty-chart">
+                      No department data available.
+                    </div>
+
                   )
-                ) : (
-                  <div className="empty-chart">
-                    No department data available.
-                  </div>
-                )}
+                }
 
               </div>
 
             </div>
+
 
             {/* LOCATION */}
 
@@ -821,6 +1156,7 @@ export default function Home() {
               <div className="panel-header">
 
                 <div>
+
                   <h2>
                     Location Breakdown
                   </h2>
@@ -828,60 +1164,81 @@ export default function Home() {
                   <p>
                     Workforce distribution by location
                   </p>
+
                 </div>
 
               </div>
 
+
               <div className="chart-list">
 
-                {Object.entries(
-                  analytics.location_breakdown
-                ).length > 0 ? (
+                {
                   Object.entries(
                     analytics.location_breakdown
-                  ).map(
-                    ([location, count]) => (
-                      <div
-                        className="chart-item"
-                        key={location}
-                      >
-                        <div className="chart-item-top">
+                  ).length > 0 ? (
 
-                          <span>
-                            {location}
-                          </span>
+                    Object.entries(
+                      analytics.location_breakdown
+                    ).map(
+                      (
+                        [
+                          location,
+                          count,
+                        ]
+                      ) => (
 
-                          <strong>
-                            {count}
-                          </strong>
+                        <div
+                          className="chart-item"
+                          key={
+                            location
+                          }
+                        >
+
+                          <div className="chart-item-top">
+
+                            <span>
+                              {location}
+                            </span>
+
+                            <strong>
+                              {count}
+                            </strong>
+
+                          </div>
+
+
+                          <div className="bar-track">
+
+                            <div
+                              className="bar-fill purple-fill"
+                              style={{
+                                width:
+                                  `${barWidth(
+                                    count,
+                                    analytics.location_breakdown
+                                  )}%`,
+                              }}
+                            />
+
+                          </div>
 
                         </div>
-
-                        <div className="bar-track">
-
-                          <div
-                            className="bar-fill purple-fill"
-                            style={{
-                              width: `${getBarWidth(
-                                count,
-                                analytics.location_breakdown
-                              )}%`,
-                            }}
-                          />
-
-                        </div>
-                      </div>
+                      )
                     )
+
+                  ) : (
+
+                    <div className="empty-chart">
+                      No location data available.
+                    </div>
+
                   )
-                ) : (
-                  <div className="empty-chart">
-                    No location data available.
-                  </div>
-                )}
+                }
 
               </div>
 
             </div>
+
 
             {/* EMPLOYMENT TYPE */}
 
@@ -890,6 +1247,7 @@ export default function Home() {
               <div className="panel-header">
 
                 <div>
+
                   <h2>
                     Employment Type
                   </h2>
@@ -897,68 +1255,92 @@ export default function Home() {
                   <p>
                     Workforce by employment type
                   </p>
+
                 </div>
 
               </div>
 
+
               <div className="chart-list">
 
-                {Object.entries(
-                  analytics.employment_type_breakdown
-                ).length > 0 ? (
+                {
                   Object.entries(
                     analytics.employment_type_breakdown
-                  ).map(
-                    ([employmentType, count]) => (
-                      <div
-                        className="chart-item"
-                        key={employmentType}
-                      >
-                        <div className="chart-item-top">
+                  ).length > 0 ? (
 
-                          <span>
-                            {employmentType}
-                          </span>
+                    Object.entries(
+                      analytics.employment_type_breakdown
+                    ).map(
+                      (
+                        [
+                          employmentType,
+                          count,
+                        ]
+                      ) => (
 
-                          <strong>
-                            {count}
-                          </strong>
+                        <div
+                          className="chart-item"
+                          key={
+                            employmentType
+                          }
+                        >
+
+                          <div className="chart-item-top">
+
+                            <span>
+                              {
+                                employmentType
+                              }
+                            </span>
+
+                            <strong>
+                              {count}
+                            </strong>
+
+                          </div>
+
+
+                          <div className="bar-track">
+
+                            <div
+                              className="bar-fill green-fill"
+                              style={{
+                                width:
+                                  `${barWidth(
+                                    count,
+                                    analytics.employment_type_breakdown
+                                  )}%`,
+                              }}
+                            />
+
+                          </div>
 
                         </div>
-
-                        <div className="bar-track">
-
-                          <div
-                            className="bar-fill green-fill"
-                            style={{
-                              width: `${getBarWidth(
-                                count,
-                                analytics.employment_type_breakdown
-                              )}%`,
-                            }}
-                          />
-
-                        </div>
-                      </div>
+                      )
                     )
+
+                  ) : (
+
+                    <div className="empty-chart">
+                      No employment type data available.
+                    </div>
+
                   )
-                ) : (
-                  <div className="empty-chart">
-                    No employment type data available.
-                  </div>
-                )}
+                }
 
               </div>
 
             </div>
 
-            {/* STATUS */}
+
+            {/* WORKFORCE STATUS */}
 
             <div className="panel">
 
               <div className="panel-header">
 
                 <div>
+
                   <h2>
                     Workforce Status
                   </h2>
@@ -966,9 +1348,11 @@ export default function Home() {
                   <p>
                     Active vs inactive employees
                   </p>
+
                 </div>
 
               </div>
+
 
               <div className="status-summary">
 
@@ -977,48 +1361,59 @@ export default function Home() {
                   <div className="status-dot green-dot" />
 
                   <div>
+
                     <span>
                       Active
                     </span>
 
                     <strong>
-                      {analytics.status_active}
+                      {
+                        analytics.status_active
+                      }
                     </strong>
+
                   </div>
 
                 </div>
+
 
                 <div className="status-summary-item">
 
                   <div className="status-dot red-dot" />
 
                   <div>
+
                     <span>
                       Inactive
                     </span>
 
                     <strong>
-                      {analytics.status_inactive}
+                      {
+                        analytics.status_inactive
+                      }
                     </strong>
+
                   </div>
 
                 </div>
 
               </div>
 
+
               <div className="status-progress">
 
                 <div
                   className="status-progress-active"
                   style={{
-                    width: `${
-                      analytics.total_employees > 0
-                        ? (
-                            analytics.status_active /
-                            analytics.total_employees
-                          ) * 100
-                        : 0
-                    }%`,
+                    width:
+                      `${
+                        analytics.total_employees
+                          ? (
+                              analytics.status_active /
+                              analytics.total_employees
+                            ) * 100
+                          : 0
+                      }%`,
                   }}
                 />
 
@@ -1028,9 +1423,10 @@ export default function Home() {
 
           </section>
 
+
           {/* ==================================================
               EMPLOYEE MANAGEMENT
-          ================================================== */}
+              ================================================== */}
 
           <section className="panel employee-panel">
 
@@ -1043,21 +1439,30 @@ export default function Home() {
                 </h2>
 
                 <p>
-                  Add, edit, delete, search and filter employees
+                  Search and filter your workforce
                 </p>
 
               </div>
 
+
               <div className="management-actions">
 
                 <span className="employee-count">
-                  {filteredEmployees.length} of{" "}
-                  {employees.length}
+                  {
+                    filteredEmployees.length
+                  }{" "}
+                  of{" "}
+                  {
+                    employees.length
+                  }
                 </span>
+
 
                 <button
                   className="add-button"
-                  onClick={openAddModal}
+                  onClick={
+                    openAddModal
+                  }
                 >
                   + Add Employee
                 </button>
@@ -1065,6 +1470,7 @@ export default function Home() {
               </div>
 
             </div>
+
 
             {/* FILTERS */}
 
@@ -1078,50 +1484,73 @@ export default function Home() {
 
                 <input
                   type="text"
-                  placeholder="Search by name, ID, email, department, role or skill..."
-                  value={search}
-                  onChange={(event) =>
-                    setSearch(
-                      event.target.value
-                    )
+                  placeholder="Search by name, ID, email, role or skill..."
+                  value={
+                    search
+                  }
+                  onChange={
+                    (event) =>
+                      setSearch(
+                        event.target.value
+                      )
                   }
                 />
 
               </div>
 
+
               <select
-                value={departmentFilter}
-                onChange={(event) =>
-                  setDepartmentFilter(
-                    event.target.value
-                  )
+                value={
+                  departmentFilter
+                }
+                onChange={
+                  (event) =>
+                    setDepartmentFilter(
+                      event.target.value
+                    )
                 }
               >
+
                 <option value="All">
                   All Departments
                 </option>
 
-                {departments.map(
-                  (department) => (
-                    <option
-                      key={department}
-                      value={department}
-                    >
-                      {department}
-                    </option>
+                {
+                  departments.map(
+                    (department) => (
+
+                      <option
+                        key={
+                          department
+                        }
+                        value={
+                          department
+                        }
+                      >
+                        {
+                          department
+                        }
+                      </option>
+
+                    )
                   )
-                )}
+                }
 
               </select>
 
+
               <select
-                value={statusFilter}
-                onChange={(event) =>
-                  setStatusFilter(
-                    event.target.value
-                  )
+                value={
+                  statusFilter
+                }
+                onChange={
+                  (event) =>
+                    setStatusFilter(
+                      event.target.value
+                    )
                 }
               >
+
                 <option value="All">
                   All Status
                 </option>
@@ -1138,7 +1567,8 @@ export default function Home() {
 
             </div>
 
-            {/* EMPLOYEE TABLE */}
+
+            {/* TABLE */}
 
             <div className="table-container">
 
@@ -1180,143 +1610,177 @@ export default function Home() {
 
                 </thead>
 
+
                 <tbody>
 
-                  {filteredEmployees.length > 0 ? (
+                  {
+                    filteredEmployees.length >
+                    0 ? (
 
-                    filteredEmployees.map(
-                      (employee) => (
+                      filteredEmployees.map(
+                        (employee) => (
 
-                        <tr
-                          key={employee.id}
-                        >
+                          <tr
+                            key={
+                              employee.id
+                            }
+                          >
 
-                          <td>
+                            <td>
 
-                            <div className="employee-cell">
+                              <div className="employee-cell">
 
-                              <div className="avatar">
-                                {employee.full_name
-                                  .charAt(0)
-                                  .toUpperCase()}
-                              </div>
-
-                              <div>
-
-                                <div className="employee-name">
+                                <div className="avatar">
                                   {
                                     employee.full_name
+                                      .charAt(0)
+                                      .toUpperCase()
                                   }
                                 </div>
 
-                                <div className="employee-meta">
-                                  {
-                                    employee.employee_id
-                                  }
-                                  {" · "}
-                                  {employee.email}
+
+                                <div>
+
+                                  <div className="employee-name">
+                                    {
+                                      employee.full_name
+                                    }
+                                  </div>
+
+                                  <div className="employee-meta">
+                                    {
+                                      employee.employee_id
+                                    }{" "}
+                                    ·{" "}
+                                    {
+                                      employee.email
+                                    }
+                                  </div>
+
                                 </div>
 
                               </div>
 
-                            </div>
+                            </td>
 
-                          </td>
 
-                          <td>
-                            {employee.department}
-                          </td>
-
-                          <td>
-                            {employee.designation}
-                          </td>
-
-                          <td>
-                            {employee.location ??
-                              "—"}
-                          </td>
-
-                          <td>
-
-                            <span className="performance">
-                              {employee.performance_score ??
-                                "—"}
-                            </span>
-
-                          </td>
-
-                          <td>
-
-                            <span
-                              className={
-                                employee.is_active
-                                  ? "status active"
-                                  : "status inactive"
+                            <td>
+                              {
+                                employee.department
                               }
-                            >
-                              {employee.is_active
-                                ? "Active"
-                                : "Inactive"}
-                            </span>
+                            </td>
 
-                          </td>
 
-                          <td>
+                            <td>
+                              {
+                                employee.designation
+                              }
+                            </td>
 
-                            <div className="row-actions">
 
-                              <button
-                                className="edit-button"
-                                onClick={() =>
-                                  openEditModal(
-                                    employee
-                                  )
+                            <td>
+                              {
+                                employee.location ??
+                                "—"
+                              }
+                            </td>
+
+
+                            <td>
+
+                              <span className="performance">
+                                {
+                                  employee.performance_score ??
+                                  "—"
+                                }
+                              </span>
+
+                            </td>
+
+
+                            <td>
+
+                              <span
+                                className={
+                                  employee.is_active
+                                    ? "status active"
+                                    : "status inactive"
                                 }
                               >
-                                Edit
-                              </button>
-
-                              <button
-                                className="delete-button"
-                                onClick={() =>
-                                  handleDelete(
-                                    employee
-                                  )
+                                {
+                                  employee.is_active
+                                    ? "Active"
+                                    : "Inactive"
                                 }
-                                disabled={
-                                  deletingId ===
-                                  employee.id
-                                }
-                              >
-                                {deletingId ===
-                                employee.id
-                                  ? "Deleting..."
-                                  : "Delete"}
-                              </button>
+                              </span>
 
-                            </div>
+                            </td>
 
-                          </td>
 
-                        </tr>
+                            <td>
 
+                              <div className="row-actions">
+
+                                <button
+                                  className="edit-button"
+                                  onClick={
+                                    () =>
+                                      openEditModal(
+                                        employee
+                                      )
+                                  }
+                                >
+                                  Edit
+                                </button>
+
+
+                                <button
+                                  className="delete-button"
+                                  onClick={
+                                    () =>
+                                      handleDelete(
+                                        employee
+                                      )
+                                  }
+                                  disabled={
+                                    deletingId ===
+                                    employee.id
+                                  }
+                                >
+                                  {
+                                    deletingId ===
+                                    employee.id
+                                      ? "Deleting..."
+                                      : "Delete"
+                                  }
+                                </button>
+
+                              </div>
+
+                            </td>
+
+                          </tr>
+
+                        )
                       )
+
+                    ) : (
+
+                      <tr>
+
+                        <td
+                          colSpan={
+                            7
+                          }
+                          className="empty-state"
+                        >
+                          No employees match your current search or filters.
+                        </td>
+
+                      </tr>
+
                     )
-
-                  ) : (
-
-                    <tr>
-
-                      <td
-                        colSpan={7}
-                        className="empty-state"
-                      >
-                        No employees match your current search or filters.
-                      </td>
-
-                    </tr>
-
-                  )}
+                  }
 
                 </tbody>
 
@@ -1327,74 +1791,90 @@ export default function Home() {
           </section>
 
         </>
+
       )}
+
 
       {/* ======================================================
           ADD / EDIT MODAL
-      ====================================================== */}
+          ====================================================== */}
 
       {showModal && (
+
         <div
           className="modal-overlay"
-          onMouseDown={(event) => {
-            if (
-              event.target ===
-              event.currentTarget
-            ) {
-              closeModal();
+          onMouseDown={
+            (event) => {
+
+              if (
+                event.target ===
+                event.currentTarget
+              ) {
+                closeModal();
+              }
+
             }
-          }}
+          }
         >
 
           <div className="modal">
-
-            {/* MODAL HEADER */}
 
             <div className="modal-header">
 
               <div>
 
                 <h2>
-                  {editingEmployee
-                    ? "Edit Employee"
-                    : "Add Employee"}
+                  {
+                    editingEmployee
+                      ? "Edit Employee"
+                      : "Add Employee"
+                  }
                 </h2>
 
                 <p>
-                  {editingEmployee
-                    ? "Update the employee information."
-                    : "Enter the employee information."}
+                  {
+                    editingEmployee
+                      ? "Update the employee information."
+                      : "Enter the employee information."
+                  }
                 </p>
 
               </div>
 
+
               <button
                 className="close-button"
-                onClick={closeModal}
-                disabled={saving}
+                onClick={
+                  closeModal
+                }
+                disabled={
+                  saving
+                }
               >
                 ×
               </button>
 
             </div>
 
-            {/* FORM ERROR */}
 
             {formError && (
+
               <div className="form-error">
-                {formError}
+                {
+                  formError
+                }
               </div>
+
             )}
 
-            {/* FORM */}
 
             <form
-              onSubmit={handleSubmit}
+              onSubmit={
+                handleSubmit
+              }
             >
 
               <div className="form-grid">
-
-                {/* EMPLOYEE ID */}
 
                 <div className="form-field">
 
@@ -1407,11 +1887,12 @@ export default function Home() {
                     value={
                       form.employee_id
                     }
-                    onChange={(event) =>
-                      updateForm(
-                        "employee_id",
-                        event.target.value
-                      )
+                    onChange={
+                      (event) =>
+                        setField(
+                          "employee_id",
+                          event.target.value
+                        )
                     }
                     placeholder="EMP004"
                     disabled={
@@ -1421,7 +1902,6 @@ export default function Home() {
 
                 </div>
 
-                {/* FULL NAME */}
 
                 <div className="form-field">
 
@@ -1434,11 +1914,12 @@ export default function Home() {
                     value={
                       form.full_name
                     }
-                    onChange={(event) =>
-                      updateForm(
-                        "full_name",
-                        event.target.value
-                      )
+                    onChange={
+                      (event) =>
+                        setField(
+                          "full_name",
+                          event.target.value
+                        )
                     }
                     placeholder="Ananya Rao"
                     disabled={
@@ -1448,7 +1929,6 @@ export default function Home() {
 
                 </div>
 
-                {/* EMAIL */}
 
                 <div className="form-field">
 
@@ -1461,11 +1941,12 @@ export default function Home() {
                     value={
                       form.email
                     }
-                    onChange={(event) =>
-                      updateForm(
-                        "email",
-                        event.target.value
-                      )
+                    onChange={
+                      (event) =>
+                        setField(
+                          "email",
+                          event.target.value
+                        )
                     }
                     placeholder="employee@example.com"
                     disabled={
@@ -1475,7 +1956,6 @@ export default function Home() {
 
                 </div>
 
-                {/* DEPARTMENT */}
 
                 <div className="form-field">
 
@@ -1488,11 +1968,12 @@ export default function Home() {
                     value={
                       form.department
                     }
-                    onChange={(event) =>
-                      updateForm(
-                        "department",
-                        event.target.value
-                      )
+                    onChange={
+                      (event) =>
+                        setField(
+                          "department",
+                          event.target.value
+                        )
                     }
                     placeholder="Human Resources"
                     disabled={
@@ -1502,7 +1983,6 @@ export default function Home() {
 
                 </div>
 
-                {/* DESIGNATION */}
 
                 <div className="form-field">
 
@@ -1515,11 +1995,12 @@ export default function Home() {
                     value={
                       form.designation
                     }
-                    onChange={(event) =>
-                      updateForm(
-                        "designation",
-                        event.target.value
-                      )
+                    onChange={
+                      (event) =>
+                        setField(
+                          "designation",
+                          event.target.value
+                        )
                     }
                     placeholder="HR Executive"
                     disabled={
@@ -1529,7 +2010,6 @@ export default function Home() {
 
                 </div>
 
-                {/* EMPLOYMENT TYPE */}
 
                 <div className="form-field">
 
@@ -1541,16 +2021,18 @@ export default function Home() {
                     value={
                       form.employment_type
                     }
-                    onChange={(event) =>
-                      updateForm(
-                        "employment_type",
-                        event.target.value
-                      )
+                    onChange={
+                      (event) =>
+                        setField(
+                          "employment_type",
+                          event.target.value
+                        )
                     }
                     disabled={
                       saving
                     }
                   >
+
                     <option value="Full-time">
                       Full-time
                     </option>
@@ -1571,7 +2053,6 @@ export default function Home() {
 
                 </div>
 
-                {/* JOINING DATE */}
 
                 <div className="form-field">
 
@@ -1584,11 +2065,12 @@ export default function Home() {
                     value={
                       form.date_of_joining
                     }
-                    onChange={(event) =>
-                      updateForm(
-                        "date_of_joining",
-                        event.target.value
-                      )
+                    onChange={
+                      (event) =>
+                        setField(
+                          "date_of_joining",
+                          event.target.value
+                        )
                     }
                     disabled={
                       saving
@@ -1597,7 +2079,6 @@ export default function Home() {
 
                 </div>
 
-                {/* STATUS */}
 
                 <div className="form-field">
 
@@ -1609,16 +2090,18 @@ export default function Home() {
                     value={
                       form.status
                     }
-                    onChange={(event) =>
-                      updateForm(
-                        "status",
-                        event.target.value
-                      )
+                    onChange={
+                      (event) =>
+                        setField(
+                          "status",
+                          event.target.value
+                        )
                     }
                     disabled={
                       saving
                     }
                   >
+
                     <option value="Active">
                       Active
                     </option>
@@ -1635,7 +2118,6 @@ export default function Home() {
 
                 </div>
 
-                {/* LOCATION */}
 
                 <div className="form-field">
 
@@ -1648,11 +2130,12 @@ export default function Home() {
                     value={
                       form.location
                     }
-                    onChange={(event) =>
-                      updateForm(
-                        "location",
-                        event.target.value
-                      )
+                    onChange={
+                      (event) =>
+                        setField(
+                          "location",
+                          event.target.value
+                        )
                     }
                     placeholder="Hyderabad"
                     disabled={
@@ -1662,7 +2145,6 @@ export default function Home() {
 
                 </div>
 
-                {/* MANAGER */}
 
                 <div className="form-field">
 
@@ -1675,11 +2157,12 @@ export default function Home() {
                     value={
                       form.manager
                     }
-                    onChange={(event) =>
-                      updateForm(
-                        "manager",
-                        event.target.value
-                      )
+                    onChange={
+                      (event) =>
+                        setField(
+                          "manager",
+                          event.target.value
+                        )
                     }
                     placeholder="HR Manager"
                     disabled={
@@ -1689,7 +2172,6 @@ export default function Home() {
 
                 </div>
 
-                {/* PERFORMANCE */}
 
                 <div className="form-field">
 
@@ -1705,11 +2187,12 @@ export default function Home() {
                     value={
                       form.performance_score
                     }
-                    onChange={(event) =>
-                      updateForm(
-                        "performance_score",
-                        event.target.value
-                      )
+                    onChange={
+                      (event) =>
+                        setField(
+                          "performance_score",
+                          event.target.value
+                        )
                     }
                     placeholder="90"
                     disabled={
@@ -1721,7 +2204,6 @@ export default function Home() {
 
               </div>
 
-              {/* SKILLS */}
 
               <div className="form-field full-field">
 
@@ -1733,11 +2215,12 @@ export default function Home() {
                   value={
                     form.skills
                   }
-                  onChange={(event) =>
-                    updateForm(
-                      "skills",
-                      event.target.value
-                    )
+                  onChange={
+                    (event) =>
+                      setField(
+                        "skills",
+                        event.target.value
+                      )
                   }
                   placeholder="Recruitment, HR Operations, Excel, Power BI, SQL"
                   rows={3}
@@ -1748,7 +2231,6 @@ export default function Home() {
 
               </div>
 
-              {/* ACTIVE */}
 
               <label className="checkbox-field">
 
@@ -1757,11 +2239,12 @@ export default function Home() {
                   checked={
                     form.is_active
                   }
-                  onChange={(event) =>
-                    updateForm(
-                      "is_active",
-                      event.target.checked
-                    )
+                  onChange={
+                    (event) =>
+                      setField(
+                        "is_active",
+                        event.target.checked
+                      )
                   }
                   disabled={
                     saving
@@ -1774,29 +2257,37 @@ export default function Home() {
 
               </label>
 
-              {/* ACTIONS */}
 
               <div className="modal-actions">
 
                 <button
                   type="button"
                   className="cancel-button"
-                  onClick={closeModal}
-                  disabled={saving}
+                  onClick={
+                    closeModal
+                  }
+                  disabled={
+                    saving
+                  }
                 >
                   Cancel
                 </button>
 
+
                 <button
                   type="submit"
                   className="save-button"
-                  disabled={saving}
+                  disabled={
+                    saving
+                  }
                 >
-                  {saving
-                    ? "Saving..."
-                    : editingEmployee
-                    ? "Save Changes"
-                    : "Create Employee"}
+                  {
+                    saving
+                      ? "Saving..."
+                      : editingEmployee
+                      ? "Save Changes"
+                      : "Create Employee"
+                  }
                 </button>
 
               </div>
@@ -1806,6 +2297,7 @@ export default function Home() {
           </div>
 
         </div>
+
       )}
 
     </main>

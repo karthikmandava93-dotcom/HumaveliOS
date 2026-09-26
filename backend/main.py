@@ -4,10 +4,9 @@ from typing import Optional
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, EmailStr
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from database import get_db
+from database import Base, engine, get_db
 from models import Employee
 
 
@@ -25,6 +24,7 @@ app = FastAPI(
 # ============================================================
 # CORS
 # ============================================================
+# Allows local development and Vercel production deployments.
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,10 +32,19 @@ app.add_middleware(
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ],
+    allow_origin_regex=r"https://.*\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ============================================================
+# DATABASE TABLE INITIALIZATION
+# ============================================================
+# Creates missing tables without deleting existing data.
+
+Base.metadata.create_all(bind=engine)
 
 
 # ============================================================
@@ -178,10 +187,6 @@ def search_employees(
 ):
     query = db.query(Employee)
 
-    # --------------------------------------------------------
-    # GENERAL SEARCH
-    # --------------------------------------------------------
-
     if search:
         search_pattern = f"%{search}%"
 
@@ -193,36 +198,26 @@ def search_employees(
             | (Employee.skills.ilike(search_pattern))
         )
 
-    # --------------------------------------------------------
-    # DEPARTMENT
-    # --------------------------------------------------------
-
     if department:
         query = query.filter(
-            Employee.department.ilike(f"%{department}%")
+            Employee.department.ilike(
+                f"%{department}%"
+            )
         )
-
-    # --------------------------------------------------------
-    # STATUS
-    # --------------------------------------------------------
 
     if status:
         query = query.filter(
-            Employee.status.ilike(f"%{status}%")
+            Employee.status.ilike(
+                f"%{status}%"
+            )
         )
-
-    # --------------------------------------------------------
-    # LOCATION
-    # --------------------------------------------------------
 
     if location:
         query = query.filter(
-            Employee.location.ilike(f"%{location}%")
+            Employee.location.ilike(
+                f"%{location}%"
+            )
         )
-
-    # --------------------------------------------------------
-    # EMPLOYMENT TYPE
-    # --------------------------------------------------------
 
     if employment_type:
         query = query.filter(
@@ -230,10 +225,6 @@ def search_employees(
                 f"%{employment_type}%"
             )
         )
-
-    # --------------------------------------------------------
-    # ACTIVE / INACTIVE
-    # --------------------------------------------------------
 
     if is_active is not None:
         query = query.filter(
@@ -279,7 +270,9 @@ def get_employee(
 ):
     employee = (
         db.query(Employee)
-        .filter(Employee.id == employee_id)
+        .filter(
+            Employee.id == employee_id
+        )
         .first()
     )
 
@@ -305,15 +298,62 @@ def create_employee(
     employee_data: EmployeeCreate,
     db: Session = Depends(get_db),
 ):
-    # --------------------------------------------------------
-    # CHECK EMPLOYEE ID
-    # --------------------------------------------------------
+    employee_id = (
+        employee_data.employee_id.strip()
+    )
+
+    email = (
+        str(employee_data.email)
+        .strip()
+        .lower()
+    )
+
+    if not employee_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Employee ID is required",
+        )
+
+    if not employee_data.full_name.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Full name is required",
+        )
+
+    if not employee_data.department.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Department is required",
+        )
+
+    if not employee_data.designation.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Designation is required",
+        )
+
+    if (
+        employee_data.performance_score
+        is not None
+    ):
+        if not (
+            0
+            <= employee_data.performance_score
+            <= 100
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Performance score must be "
+                    "between 0 and 100"
+                ),
+            )
 
     existing_employee = (
         db.query(Employee)
         .filter(
             Employee.employee_id
-            == employee_data.employee_id
+            == employee_id
         )
         .first()
     )
@@ -324,15 +364,10 @@ def create_employee(
             detail="Employee ID already exists",
         )
 
-    # --------------------------------------------------------
-    # CHECK EMAIL
-    # --------------------------------------------------------
-
     existing_email = (
         db.query(Employee)
         .filter(
-            Employee.email
-            == str(employee_data.email)
+            Employee.email == email
         )
         .first()
     )
@@ -343,24 +378,49 @@ def create_employee(
             detail="Email already exists",
         )
 
-    # --------------------------------------------------------
-    # CREATE
-    # --------------------------------------------------------
-
     employee = Employee(
-        employee_id=employee_data.employee_id,
-        full_name=employee_data.full_name,
-        email=str(employee_data.email),
-        department=employee_data.department,
-        designation=employee_data.designation,
-        employment_type=employee_data.employment_type,
-        date_of_joining=employee_data.date_of_joining,
-        status=employee_data.status,
-        location=employee_data.location,
-        manager=employee_data.manager,
-        performance_score=employee_data.performance_score,
-        skills=employee_data.skills,
-        is_active=employee_data.is_active,
+        employee_id=employee_id,
+        full_name=(
+            employee_data.full_name.strip()
+        ),
+        email=email,
+        department=(
+            employee_data.department.strip()
+        ),
+        designation=(
+            employee_data.designation.strip()
+        ),
+        employment_type=(
+            employee_data.employment_type.strip()
+        ),
+        date_of_joining=(
+            employee_data.date_of_joining
+        ),
+        status=(
+            employee_data.status.strip()
+            or "Active"
+        ),
+        location=(
+            employee_data.location.strip()
+            if employee_data.location
+            else None
+        ),
+        manager=(
+            employee_data.manager.strip()
+            if employee_data.manager
+            else None
+        ),
+        performance_score=(
+            employee_data.performance_score
+        ),
+        skills=(
+            employee_data.skills.strip()
+            if employee_data.skills
+            else None
+        ),
+        is_active=(
+            employee_data.is_active
+        ),
     )
 
     db.add(employee)
@@ -383,13 +443,11 @@ def update_employee(
     employee_data: EmployeeCreate,
     db: Session = Depends(get_db),
 ):
-    # --------------------------------------------------------
-    # FIND EMPLOYEE
-    # --------------------------------------------------------
-
     employee = (
         db.query(Employee)
-        .filter(Employee.id == employee_id)
+        .filter(
+            Employee.id == employee_id
+        )
         .first()
     )
 
@@ -399,15 +457,38 @@ def update_employee(
             detail="Employee not found",
         )
 
-    # --------------------------------------------------------
-    # CHECK DUPLICATE EMPLOYEE ID
-    # --------------------------------------------------------
+    new_employee_id = (
+        employee_data.employee_id.strip()
+    )
+
+    new_email = (
+        str(employee_data.email)
+        .strip()
+        .lower()
+    )
+
+    if (
+        employee_data.performance_score
+        is not None
+    ):
+        if not (
+            0
+            <= employee_data.performance_score
+            <= 100
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Performance score must be "
+                    "between 0 and 100"
+                ),
+            )
 
     duplicate_employee = (
         db.query(Employee)
         .filter(
             Employee.employee_id
-            == employee_data.employee_id,
+            == new_employee_id,
             Employee.id != employee_id,
         )
         .first()
@@ -419,15 +500,10 @@ def update_employee(
             detail="Employee ID already exists",
         )
 
-    # --------------------------------------------------------
-    # CHECK DUPLICATE EMAIL
-    # --------------------------------------------------------
-
     duplicate_email = (
         db.query(Employee)
         .filter(
-            Employee.email
-            == str(employee_data.email),
+            Employee.email == new_email,
             Employee.id != employee_id,
         )
         .first()
@@ -439,23 +515,62 @@ def update_employee(
             detail="Email already exists",
         )
 
-    # --------------------------------------------------------
-    # UPDATE
-    # --------------------------------------------------------
+    employee.employee_id = (
+        new_employee_id
+    )
 
-    employee.employee_id = employee_data.employee_id
-    employee.full_name = employee_data.full_name
-    employee.email = str(employee_data.email)
-    employee.department = employee_data.department
-    employee.designation = employee_data.designation
-    employee.employment_type = employee_data.employment_type
-    employee.date_of_joining = employee_data.date_of_joining
-    employee.status = employee_data.status
-    employee.location = employee_data.location
-    employee.manager = employee_data.manager
-    employee.performance_score = employee_data.performance_score
-    employee.skills = employee_data.skills
-    employee.is_active = employee_data.is_active
+    employee.full_name = (
+        employee_data.full_name.strip()
+    )
+
+    employee.email = new_email
+
+    employee.department = (
+        employee_data.department.strip()
+    )
+
+    employee.designation = (
+        employee_data.designation.strip()
+    )
+
+    employee.employment_type = (
+        employee_data.employment_type.strip()
+    )
+
+    employee.date_of_joining = (
+        employee_data.date_of_joining
+    )
+
+    employee.status = (
+        employee_data.status.strip()
+        or "Active"
+    )
+
+    employee.location = (
+        employee_data.location.strip()
+        if employee_data.location
+        else None
+    )
+
+    employee.manager = (
+        employee_data.manager.strip()
+        if employee_data.manager
+        else None
+    )
+
+    employee.performance_score = (
+        employee_data.performance_score
+    )
+
+    employee.skills = (
+        employee_data.skills.strip()
+        if employee_data.skills
+        else None
+    )
+
+    employee.is_active = (
+        employee_data.is_active
+    )
 
     db.commit()
     db.refresh(employee)
@@ -467,18 +582,18 @@ def update_employee(
 # DELETE EMPLOYEE
 # ============================================================
 
-@app.delete("/employees/{employee_id}")
+@app.delete(
+    "/employees/{employee_id}"
+)
 def delete_employee(
     employee_id: int,
     db: Session = Depends(get_db),
 ):
-    # --------------------------------------------------------
-    # FIND EMPLOYEE
-    # --------------------------------------------------------
-
     employee = (
         db.query(Employee)
-        .filter(Employee.id == employee_id)
+        .filter(
+            Employee.id == employee_id
+        )
         .first()
     )
 
@@ -488,15 +603,13 @@ def delete_employee(
             detail="Employee not found",
         )
 
-    # --------------------------------------------------------
-    # DELETE
-    # --------------------------------------------------------
-
     db.delete(employee)
     db.commit()
 
     return {
-        "message": "Employee deleted successfully",
+        "message": (
+            "Employee deleted successfully"
+        ),
         "employee_id": employee_id,
     }
 
@@ -505,24 +618,21 @@ def delete_employee(
 # ANALYTICS SUMMARY
 # ============================================================
 
-@app.get("/analytics/summary")
+@app.get(
+    "/analytics/summary"
+)
 def get_analytics_summary(
     db: Session = Depends(get_db),
 ):
     employees = (
         db.query(Employee)
+        .order_by(Employee.id)
         .all()
     )
 
-    # --------------------------------------------------------
-    # TOTAL
-    # --------------------------------------------------------
-
-    total_employees = len(employees)
-
-    # --------------------------------------------------------
-    # ACTIVE / INACTIVE
-    # --------------------------------------------------------
+    total_employees = len(
+        employees
+    )
 
     active_employees = sum(
         1
@@ -535,32 +645,29 @@ def get_analytics_summary(
         - active_employees
     )
 
-    # --------------------------------------------------------
-    # STATUS COUNTS
-    # --------------------------------------------------------
-
     status_active = sum(
         1
         for employee in employees
         if employee.status
-        and employee.status.lower() == "active"
+        and employee.status.strip().lower()
+        == "active"
     )
 
     status_inactive = sum(
         1
         for employee in employees
         if employee.status
-        and employee.status.lower() == "inactive"
+        and employee.status.strip().lower()
+        == "inactive"
     )
 
-    # --------------------------------------------------------
-    # AVERAGE PERFORMANCE
-    # --------------------------------------------------------
-
     performance_scores = [
-        float(employee.performance_score)
+        float(
+            employee.performance_score
+        )
         for employee in employees
-        if employee.performance_score is not None
+        if employee.performance_score
+        is not None
     ]
 
     if performance_scores:
@@ -572,67 +679,83 @@ def get_analytics_summary(
     else:
         average_performance_score = None
 
-    # --------------------------------------------------------
-    # DEPARTMENT BREAKDOWN
-    # --------------------------------------------------------
-
     department_breakdown = {}
+    employment_type_breakdown = {}
+    location_breakdown = {}
 
     for employee in employees:
-        department = employee.department
 
-        if department:
-            department_breakdown[department] = (
-                department_breakdown.get(department, 0) + 1
+        if employee.department:
+            department = (
+                employee.department.strip()
             )
 
-    # --------------------------------------------------------
-    # EMPLOYMENT TYPE BREAKDOWN
-    # --------------------------------------------------------
+            department_breakdown[
+                department
+            ] = (
+                department_breakdown.get(
+                    department,
+                    0,
+                )
+                + 1
+            )
 
-    employment_type_breakdown = {}
+        if employee.employment_type:
+            employment_type = (
+                employee.employment_type.strip()
+            )
 
-    for employee in employees:
-        employment_type = employee.employment_type
-
-        if employment_type:
             employment_type_breakdown[
                 employment_type
             ] = (
                 employment_type_breakdown.get(
                     employment_type,
-                    0
-                ) + 1
+                    0,
+                )
+                + 1
             )
 
-    # --------------------------------------------------------
-    # LOCATION BREAKDOWN
-    # --------------------------------------------------------
-
-    location_breakdown = {}
-
-    for employee in employees:
-        location = employee.location
-
-        if location:
-            location_breakdown[location] = (
-                location_breakdown.get(location, 0) + 1
+        if employee.location:
+            location = (
+                employee.location.strip()
             )
 
-    # --------------------------------------------------------
-    # RESPONSE
-    # --------------------------------------------------------
+            if location:
+                location_breakdown[
+                    location
+                ] = (
+                    location_breakdown.get(
+                        location,
+                        0,
+                    )
+                    + 1
+                )
 
     return {
-        "total_employees": total_employees,
-        "active_employees": active_employees,
-        "inactive_employees": inactive_employees,
-        "status_active": status_active,
-        "status_inactive": status_inactive,
-        "average_performance_score": average_performance_score,
-        "department_breakdown": department_breakdown,
-        "employment_type_breakdown": (
-            employment_type_breakdown
-        ),
-        "location_breakdown": location_breakdown,
+        "total_employees":
+            total_employees,
+
+        "active_employees":
+            active_employees,
+
+        "inactive_employees":
+            inactive_employees,
+
+        "status_active":
+            status_active,
+
+        "status_inactive":
+            status_inactive,
+
+        "average_performance_score":
+            average_performance_score,
+
+        "department_breakdown":
+            department_breakdown,
+
+        "employment_type_breakdown":
+            employment_type_breakdown,
+
+        "location_breakdown":
+            location_breakdown,
     }
