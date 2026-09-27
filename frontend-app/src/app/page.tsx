@@ -396,7 +396,7 @@ async function apiRequest<T>(
 
 
     throw new Error(
-      `PeopleOS API returned ${response.status}`
+      `HumaveliOS API returned ${response.status}`
     );
   }
 
@@ -540,7 +540,7 @@ function downloadCandidateTemplate() {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = "peopleos-candidate-import-template.csv";
+  anchor.download = "humavelios-candidate-import-template.csv";
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
@@ -806,7 +806,7 @@ export default function Home() {
     } catch (err) {
 
       console.error(
-        "PeopleOS API error:",
+        "HumaveliOS API error:",
         err
       );
 
@@ -820,7 +820,7 @@ export default function Home() {
       } else {
 
         setError(
-          `Unable to connect to PeopleOS API — API: ${API_URL}`
+          `Unable to connect to HumaveliOS API — API: ${API_URL}`
         );
       }
 
@@ -1733,7 +1733,7 @@ export default function Home() {
   if (!authReady) {
     return (
       <main className="dashboard">
-        <div className="message-card">Checking your PeopleOS session...</div>
+        <div className="message-card">Checking your HumaveliOS session...</div>
       </main>
     );
   }
@@ -1748,7 +1748,7 @@ export default function Home() {
       <main className="dashboard">
 
         <div className="message-card">
-          Loading PeopleOS data...
+          Loading HumaveliOS data...
         </div>
 
       </main>
@@ -1769,14 +1769,14 @@ export default function Home() {
           <div className="sidebar-brand">
             <div className="brand-icon">P</div>
             <div>
-              <strong>PeopleOS</strong>
-              <span>People Operations OS</span>
+              <strong>HumaveliOS</strong>
+              <span>People. Work. Intelligence.</span>
             </div>
           </div>
 
           <div className="sidebar-section-label">Workspace</div>
 
-          <nav className="sidebar-nav" aria-label="PeopleOS navigation">
+          <nav className="sidebar-nav" aria-label="HumaveliOS navigation">
             {NAV_ITEMS.map((item) => (
               <button
                 type="button"
@@ -1794,7 +1794,7 @@ export default function Home() {
             <div className="sidebar-account">
               <div className="account-avatar">{authUser?.email?.charAt(0).toUpperCase() || "P"}</div>
               <div>
-                <strong>{authUser?.email || "PeopleOS Admin"}</strong>
+                <strong>{authUser?.email || "HumaveliOS Admin"}</strong>
                 <span>{authUser?.role || "Admin"}</span>
               </div>
             </div>
@@ -1811,7 +1811,7 @@ export default function Home() {
       <header className="topbar">
 
         <div className="page-heading">
-          <span className="eyebrow">PeopleOS Workspace</span>
+          <span className="eyebrow">HumaveliOS Workspace</span>
           <h1>{NAV_ITEMS.find((item) => item.id === activeView)?.label}</h1>
           <p>{NAV_ITEMS.find((item) => item.id === activeView)?.description}</p>
         </div>
@@ -2828,7 +2828,7 @@ export default function Home() {
                   ))}
                 </div>
 
-                <p className="analytics-note">Funnel reach uses the candidate's current recorded stage. Rejected and withdrawn records are excluded because PeopleOS does not yet store full stage-history events.</p>
+                <p className="analytics-note">Funnel reach uses the candidate's current recorded stage. Rejected and withdrawn records are excluded because HumaveliOS does not yet store full stage-history events.</p>
               </div>
 
               <div className="recruitment-breakdowns">
@@ -2836,7 +2836,7 @@ export default function Home() {
                 <div><h3>Hiring departments</h3>{Object.keys(analytics.recruitment.department_breakdown).length ? Object.entries(analytics.recruitment.department_breakdown).map(([department,count]) => <div className="breakdown-line" key={department}><span>{department}</span><strong>{count}</strong></div>) : <div className="profile-empty">No department data recorded yet.</div>}</div>
               </div>
 
-              <p className="analytics-note">Recruitment metrics are based only on candidate records stored in PeopleOS. No applicant, hire, or conversion data is inferred.</p>
+              <p className="analytics-note">Recruitment metrics are based only on candidate records stored in HumaveliOS. No applicant, hire, or conversion data is inferred.</p>
             </div>
 
             <div className="panel candidate-panel">
@@ -3254,7 +3254,7 @@ export default function Home() {
             <div className="modal-header">
               <div>
                 <h2>Import Candidates</h2>
-                <p>Review your CSV before adding candidates to PeopleOS.</p>
+                <p>Review your CSV before adding candidates to HumaveliOS.</p>
               </div>
               <button className="close-button" onClick={closeImportModal} aria-label="Close import">×</button>
             </div>
@@ -3500,8 +3500,8 @@ export default function Home() {
               </section>
 
               <div className="profile-note">
-                <strong>PeopleOS profile insight</strong>
-                <span>This view summarizes the data currently stored for this employee. It does not infer information that is not recorded in PeopleOS.</span>
+                <strong>HumaveliOS profile insight</strong>
+                <span>This view summarizes the data currently stored for this employee. It does not infer information that is not recorded in HumaveliOS.</span>
               </div>
 
             </div>

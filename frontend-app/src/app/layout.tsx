@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PeopleOS",
-  description: "People Operations and Workforce Analytics Platform",
+  title: "HumaveliOS",
+  description: "People. Work. Intelligence.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -71,9 +71,10 @@ export default function LoginPage() {
   return (
     <main className="login-page">
       <div className="login-card">
-        <div className="login-brand">P</div>
+        <div className="login-brand">H</div>
         <div className="login-heading">
-          <h1>Welcome to PeopleOS</h1>
+          <h1>Welcome to HumaveliOS</h1>
+          <p className="login-tagline">People. Work. Intelligence.</p>
           <p>Sign in to access your HR and People Analytics workspace.</p>
         </div>
 
@@ -109,7 +110,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="login-note">PeopleOS access is controlled by the administrator account configured on the server.</p>
+        <p className="login-note">HumaveliOS access is controlled by the administrator account configured on the server.</p>
       </div>
     </main>
   );
