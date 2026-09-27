@@ -54,6 +54,7 @@ type Analytics = {
   status_inactive: number;
   active_rate: number;
   average_performance_score: number | null;
+  performance_scored_count: number;
   performance_coverage: number;
   average_tenure_months: number | null;
   performance_distribution: Record<string, number>;
@@ -114,6 +115,43 @@ const EMPTY_FORM: EmployeeForm = {
   skills: "",
   is_active: true,
 };
+
+
+/* ============================================================
+   DISPLAY HELPERS
+   ============================================================ */
+
+const PLACEHOLDER_TEXTS = new Set([
+  "string",
+  "null",
+  "none",
+  "n/a",
+  "na",
+  "-",
+  "—",
+]);
+
+function displayText(
+  value: string | null | undefined,
+  fallback = "Not provided"
+) {
+  if (value === null || value === undefined) {
+    return fallback;
+  }
+
+  const cleaned = value.trim();
+  if (!cleaned || PLACEHOLDER_TEXTS.has(cleaned.toLowerCase())) {
+    return fallback;
+  }
+
+  return cleaned;
+}
+
+function displayPerformance(score: number | null | undefined) {
+  return score === null || score === undefined
+    ? "Not scored"
+    : `${score}`;
+}
 
 
 /* ============================================================
@@ -1098,7 +1136,7 @@ export default function Home() {
 
               <div className="coverage-value">
                 <strong>{analytics.performance_coverage}%</strong>
-                <span>{analytics.average_performance_score === null ? "No scores recorded" : `Average score ${analytics.average_performance_score}`}</span>
+                <span>{analytics.performance_scored_count} of {analytics.total_employees} employees scored{analytics.average_performance_score === null ? "" : ` · Average score ${analytics.average_performance_score}`}</span>
               </div>
               <div className="status-progress">
                 <div className="status-progress-active" style={{ width: `${analytics.performance_coverage}%` }} />
@@ -1112,6 +1150,20 @@ export default function Home() {
                   </div>
                 ))}
               </div>
+
+              {Object.values(analytics.data_quality).some((count) => count > 0) && (
+                <div className="data-quality-note">
+                  <strong>Data quality</strong>
+                  <span>Some employee records have missing or placeholder values and are excluded from relevant analytics.</span>
+                  <div className="data-quality-list">
+                    {Object.entries(analytics.data_quality)
+                      .filter(([, count]) => count > 0)
+                      .map(([field, count]) => (
+                        <span key={field}>{field.replace(/_/g, " ")} · {count}</span>
+                      ))}
+                  </div>
+                </div>
+              )}
             </div>
 
           </section>
@@ -1170,9 +1222,7 @@ export default function Home() {
                           <div className="chart-item-top">
 
                             <span>
-                              {
-                                department
-                              }
+                              {displayText(department)}
                             </span>
 
                             <strong>
@@ -1263,7 +1313,7 @@ export default function Home() {
                           <div className="chart-item-top">
 
                             <span>
-                              {location}
+                              {displayText(location)}
                             </span>
 
                             <strong>
@@ -1354,9 +1404,7 @@ export default function Home() {
                           <div className="chart-item-top">
 
                             <span>
-                              {
-                                employmentType
-                              }
+                              {displayText(employmentType)}
                             </span>
 
                             <strong>
@@ -1698,7 +1746,7 @@ export default function Home() {
 
                                 <div className="avatar">
                                   {
-                                    employee.full_name
+                                    displayText(employee.full_name, "?")
                                       .charAt(0)
                                       .toUpperCase()
                                   }
@@ -1709,17 +1757,17 @@ export default function Home() {
 
                                   <div className="employee-name">
                                     {
-                                      employee.full_name
+                                      displayText(employee.full_name, "Unnamed employee")
                                     }
                                   </div>
 
                                   <div className="employee-meta">
                                     {
-                                      employee.employee_id
+                                      displayText(employee.employee_id, "No ID")
                                     }{" "}
                                     ·{" "}
                                     {
-                                      employee.email
+                                      displayText(employee.email, "No email")
                                     }
                                   </div>
 
@@ -1732,22 +1780,21 @@ export default function Home() {
 
                             <td>
                               {
-                                employee.department
+                                displayText(employee.department)
                               }
                             </td>
 
 
                             <td>
                               {
-                                employee.designation
+                                displayText(employee.designation)
                               }
                             </td>
 
 
                             <td>
                               {
-                                employee.location ??
-                                "—"
+                                displayText(employee.location)
                               }
                             </td>
 
@@ -1756,8 +1803,7 @@ export default function Home() {
 
                               <span className="performance">
                                 {
-                                  employee.performance_score ??
-                                  "—"
+                                  displayPerformance(employee.performance_score)
                                 }
                               </span>
 

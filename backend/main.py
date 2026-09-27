@@ -89,6 +89,33 @@ class EmployeeResponse(BaseModel):
 
 
 # ============================================================
+# DATA QUALITY HELPERS
+# ============================================================
+
+PLACEHOLDER_TEXTS = {
+    "string",
+    "null",
+    "none",
+    "n/a",
+    "na",
+    "-",
+    "—",
+}
+
+
+def clean_dimension(value: Optional[str]) -> Optional[str]:
+    """Return meaningful text for analytics, ignoring demo/placeholder values."""
+    if value is None:
+        return None
+
+    cleaned = value.strip()
+    if not cleaned or cleaned.lower() in PLACEHOLDER_TEXTS:
+        return None
+
+    return cleaned
+
+
+# ============================================================
 # ROOT
 # ============================================================
 
@@ -638,16 +665,6 @@ def get_analytics_summary(
         if employee.status and employee.status.strip().lower() == "inactive"
     )
 
-    performance_scores = [
-        float(employee.performance_score)
-        for employee in employees
-        if employee.performance_score is not None
-    ]
-    average_performance_score = (
-        round(sum(performance_scores) / len(performance_scores), 2)
-        if performance_scores else None
-    )
-
     department_breakdown: dict[str, int] = {}
     employment_type_breakdown: dict[str, int] = {}
     location_breakdown: dict[str, int] = {}
@@ -659,7 +676,7 @@ def get_analytics_summary(
     }
 
     today = date.today()
-    tenure_months = []
+    tenure_months: list[float] = []
     missing_fields = {
         "email": 0,
         "department": 0,
@@ -670,36 +687,54 @@ def get_analytics_summary(
     }
 
     for employee in employees:
-        if employee.department:
-            key = employee.department.strip()
-            department_breakdown[key] = department_breakdown.get(key, 0) + 1
-        if employee.employment_type:
-            key = employee.employment_type.strip()
-            employment_type_breakdown[key] = employment_type_breakdown.get(key, 0) + 1
-        if employee.location:
-            key = employee.location.strip()
-            if key:
-                location_breakdown[key] = location_breakdown.get(key, 0) + 1
+        department = clean_dimension(employee.department)
+        employment_type = clean_dimension(employee.employment_type)
+        location = clean_dimension(employee.location)
+
+        if department:
+            department_breakdown[department] = department_breakdown.get(department, 0) + 1
+
+        if employment_type:
+            employment_type_breakdown[employment_type] = employment_type_breakdown.get(employment_type, 0) + 1
+
+        if location:
+            location_breakdown[location] = location_breakdown.get(location, 0) + 1
 
         if employee.performance_score is not None:
             score = float(employee.performance_score)
-            if score >= 90:
-                performance_distribution["90-100"] += 1
-            elif score >= 75:
-                performance_distribution["75-89"] += 1
-            elif score >= 60:
-                performance_distribution["60-74"] += 1
+            if 0 <= score <= 100:
+                if score >= 90:
+                    performance_distribution["90-100"] += 1
+                elif score >= 75:
+                    performance_distribution["75-89"] += 1
+                elif score >= 60:
+                    performance_distribution["60-74"] += 1
+                else:
+                    performance_distribution["Below 60"] += 1
             else:
-                performance_distribution["Below 60"] += 1
+                missing_fields["performance_score"] += 1
+        else:
+            missing_fields["performance_score"] += 1
 
-        joining_date = employee.date_of_joining.date() if isinstance(employee.date_of_joining, datetime) else employee.date_of_joining
+        joining_date = (
+            employee.date_of_joining.date()
+            if isinstance(employee.date_of_joining, datetime)
+            else employee.date_of_joining
+        )
         if joining_date:
             tenure = max((today - joining_date).days / 30.44, 0)
             tenure_months.append(tenure)
 
         for field in missing_fields:
+            if field == "performance_score":
+                continue
+
             value = getattr(employee, field, None)
-            if value is None or (isinstance(value, str) and not value.strip()):
+            if field in {"department", "designation", "manager"}:
+                meaningful = clean_dimension(value)
+                if meaningful is None:
+                    missing_fields[field] += 1
+            elif value is None or (isinstance(value, str) and not value.strip()):
                 missing_fields[field] += 1
 
     average_tenure_months = (
@@ -707,22 +742,79 @@ def get_analytics_summary(
         if tenure_months else None
     )
     active_rate = round((active_employees / total_employees) * 100, 1) if total_employees else 0
-    performance_coverage = round((len(performance_scores) / total_employees) * 100, 1) if total_employees else 0
-    top_department = max(department_breakdown, key=department_breakdown.get) if department_breakdown else None
+
+    valid_performance_scores = [
+        float(employee.performance_score)
+        for employee in employees
+        if employee.performance_score is not None
+        and 0 <= float(employee.performance_score) <= 100
+    ]
+    average_performance_score = (
+        round(sum(valid_performance_scores) / len(valid_performance_scores), 2)
+        if valid_performance_scores else None
+    )
+    performance_coverage = (
+        round((len(valid_performance_scores) / total_employees) * 100, 1)
+        if total_employees else 0
+    )
+
+    top_department = (
+        max(department_breakdown, key=department_breakdown.get)
+        if department_breakdown
+        else None
+    )
+
+    invalid_dimension_records = sum(
+        missing_fields[field]
+        for field in ("department", "designation")
+    )
 
     insights = []
     if total_employees == 0:
-        insights.append({"type": "info", "title": "Add your first employee", "message": "PeopleOS needs workforce data before meaningful analytics can be generated."})
+        insights.append({
+            "type": "info",
+            "title": "Add your first employee",
+            "message": "PeopleOS needs workforce data before meaningful analytics can be generated.",
+        })
     else:
         if active_rate < 80:
-            insights.append({"type": "attention", "title": "Active workforce rate is low", "message": f"{active_rate}% of recorded employees are currently active. Review inactive records for accuracy."})
+            insights.append({
+                "type": "attention",
+                "title": "Active workforce rate is low",
+                "message": f"{active_rate}% of recorded employees are currently active. Review inactive records for accuracy.",
+            })
+
         if performance_coverage < 80:
-            insights.append({"type": "attention", "title": "Performance data coverage is incomplete", "message": f"Only {performance_coverage}% of employees have a performance score. Complete the missing records before using performance analytics for decisions."})
+            insights.append({
+                "type": "attention",
+                "title": "Performance data coverage is incomplete",
+                "message": (
+                    f"{len(valid_performance_scores)} of {total_employees} employees have a valid performance score. "
+                    "Complete missing scores before relying on performance analytics for decisions."
+                ),
+            })
+
         if top_department:
             share = round((department_breakdown[top_department] / total_employees) * 100, 1)
-            insights.append({"type": "info", "title": f"{top_department} is the largest department", "message": f"It represents {share}% of the recorded workforce ({department_breakdown[top_department]} employees)."})
+            insights.append({
+                "type": "info",
+                "title": "Largest department",
+                "message": f"{top_department} represents {share}% of the recorded workforce ({department_breakdown[top_department]} employees).",
+            })
+
         if average_tenure_months is not None:
-            insights.append({"type": "info", "title": "Average tenure", "message": f"The average recorded tenure is {average_tenure_months} months based on date of joining."})
+            insights.append({
+                "type": "info",
+                "title": "Average tenure",
+                "message": f"The average recorded tenure is {average_tenure_months} months based on date of joining.",
+            })
+
+        if invalid_dimension_records:
+            insights.append({
+                "type": "attention",
+                "title": "Some employee fields need cleanup",
+                "message": "Placeholder or empty department/designation values are excluded from analytics. Update those employee records for cleaner reporting.",
+            })
 
     return {
         "total_employees": total_employees,
@@ -732,6 +824,7 @@ def get_analytics_summary(
         "status_inactive": status_inactive,
         "active_rate": active_rate,
         "average_performance_score": average_performance_score,
+        "performance_scored_count": len(valid_performance_scores),
         "performance_coverage": performance_coverage,
         "average_tenure_months": average_tenure_months,
         "department_breakdown": dict(sorted(department_breakdown.items(), key=lambda item: item[1], reverse=True)),
