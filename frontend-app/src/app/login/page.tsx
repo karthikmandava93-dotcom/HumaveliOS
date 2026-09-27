@@ -71,7 +71,9 @@ export default function LoginPage() {
   return (
     <main className="login-page">
       <div className="login-card">
-        <div className="login-brand">H</div>
+        <div className="login-brand">
+  <img src="/humavelios-logo.png" alt="HumaveliOS logo" />
+</div>
         <div className="login-heading">
           <h1>Welcome to HumaveliOS</h1>
           <p className="login-tagline">People. Work. Intelligence.</p>

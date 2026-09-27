@@ -2329,3 +2329,16 @@ td {
 
 
 .user-employee-select { min-width: 190px; }
+.brand-icon,
+.login-brand {
+  overflow: hidden;
+}
+
+.brand-icon img,
+.login-brand img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  border-radius: inherit;
+}
