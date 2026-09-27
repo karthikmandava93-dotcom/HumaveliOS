@@ -52,7 +52,17 @@ type Analytics = {
   inactive_employees: number;
   status_active: number;
   status_inactive: number;
+  active_rate: number;
   average_performance_score: number | null;
+  performance_coverage: number;
+  average_tenure_months: number | null;
+  performance_distribution: Record<string, number>;
+  data_quality: Record<string, number>;
+  insights: Array<{
+    type: "info" | "attention";
+    title: string;
+    message: string;
+  }>;
   department_breakdown: Record<
     string,
     number
@@ -998,23 +1008,21 @@ export default function Home() {
               <div className="stat-card-top">
 
                 <span>
-                  Inactive Employees
+                  Active Rate
                 </span>
 
                 <div className="stat-icon orange">
-                  ○
+                  %
                 </div>
 
               </div>
 
               <strong>
-                {
-                  analytics.inactive_employees
-                }
+                {analytics.active_rate}%
               </strong>
 
               <small>
-                Currently inactive
+                Share of recorded workforce
               </small>
 
             </div>
@@ -1025,30 +1033,88 @@ export default function Home() {
               <div className="stat-card-top">
 
                 <span>
-                  Average Performance
+                  Avg. Tenure
                 </span>
 
                 <div className="stat-icon purple">
-                  ★
+                  ◷
                 </div>
 
               </div>
 
               <strong>
-                {
-                  analytics.average_performance_score ??
-                  0
-                }
+                {analytics.average_tenure_months === null
+                  ? "—"
+                  : `${analytics.average_tenure_months} mo`}
               </strong>
 
               <small>
-                Overall performance score
+                Based on date of joining
               </small>
 
             </div>
 
           </section>
 
+
+          {/* ==================================================
+              PEOPLE INSIGHTS
+              ================================================== */}
+
+          <section className="insights-grid">
+
+            <div className="panel insights-panel">
+              <div className="panel-header">
+                <div>
+                  <h2>People Insights</h2>
+                  <p>Signals generated from the current workforce data</p>
+                </div>
+              </div>
+
+              <div className="insight-list">
+                {analytics.insights.length > 0 ? (
+                  analytics.insights.map((insight, index) => (
+                    <div className={`insight-item ${insight.type}`} key={`${insight.title}-${index}`}>
+                      <div className="insight-marker">{insight.type === "attention" ? "!" : "i"}</div>
+                      <div>
+                        <strong>{insight.title}</strong>
+                        <p>{insight.message}</p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="empty-chart">No insights available yet.</div>
+                )}
+              </div>
+            </div>
+
+            <div className="panel">
+              <div className="panel-header">
+                <div>
+                  <h2>Performance Coverage</h2>
+                  <p>How complete the performance dataset is</p>
+                </div>
+              </div>
+
+              <div className="coverage-value">
+                <strong>{analytics.performance_coverage}%</strong>
+                <span>{analytics.average_performance_score === null ? "No scores recorded" : `Average score ${analytics.average_performance_score}`}</span>
+              </div>
+              <div className="status-progress">
+                <div className="status-progress-active" style={{ width: `${analytics.performance_coverage}%` }} />
+              </div>
+
+              <div className="mini-breakdown">
+                {Object.entries(analytics.performance_distribution).map(([range, count]) => (
+                  <div className="mini-breakdown-row" key={range}>
+                    <span>{range}</span>
+                    <strong>{count}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+          </section>
 
           {/* ==================================================
               ANALYTICS
