@@ -57,6 +57,13 @@ type Analytics = {
   performance_scored_count: number;
   performance_coverage: number;
   average_tenure_months: number | null;
+  recent_joiners_90_days: number;
+  monthly_hiring_trend: Array<{
+    month: string;
+    label: string;
+    count: number;
+  }>;
+  tenure_distribution: Record<string, number>;
   performance_distribution: Record<string, number>;
   data_quality: Record<string, number>;
   insights: Array<{
@@ -1637,6 +1644,93 @@ export default function Home() {
                   }}
                 />
 
+              </div>
+
+            </div>
+
+          </section>
+
+
+          {/* ==================================================
+              WORKFORCE TRENDS
+              ================================================== */}
+
+          <section className="analytics-grid workforce-trends-grid">
+
+            <div className="panel">
+
+              <div className="panel-header">
+                <div>
+                  <h2>Hiring Trend</h2>
+                  <p>Recorded employee joiners over the last 12 months</p>
+                </div>
+              </div>
+
+              <div className="trend-summary">
+                <strong>{analytics.recent_joiners_90_days}</strong>
+                <span>joined in the last 90 days</span>
+              </div>
+
+              <div className="chart-list trend-list">
+                {analytics.monthly_hiring_trend.map((item) => (
+                  <div className="chart-item" key={item.month}>
+                    <div className="chart-item-top">
+                      <span>{item.label}</span>
+                      <strong>{item.count}</strong>
+                    </div>
+                    <div className="bar-track">
+                      <div
+                        className="bar-fill blue-fill"
+                        style={{
+                          width: `${barWidth(
+                            item.count,
+                            Object.fromEntries(
+                              analytics.monthly_hiring_trend.map((trend) => [
+                                trend.month,
+                                trend.count,
+                              ])
+                            )
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <p className="analytics-note">
+                Based on recorded joining dates. This is a hiring-activity trend, not a reconstructed historical headcount.
+              </p>
+
+            </div>
+
+
+            <div className="panel">
+
+              <div className="panel-header">
+                <div>
+                  <h2>Tenure Distribution</h2>
+                  <p>Current workforce grouped by recorded tenure</p>
+                </div>
+              </div>
+
+              <div className="chart-list">
+                {Object.entries(analytics.tenure_distribution).map(([range, count]) => (
+                  <div className="chart-item" key={range}>
+                    <div className="chart-item-top">
+                      <span>{range}</span>
+                      <strong>{count}</strong>
+                    </div>
+                    <div className="bar-track">
+                      <div
+                        className="bar-fill purple-fill"
+                        style={{
+                          width: `${barWidth(count, analytics.tenure_distribution)}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
 
             </div>

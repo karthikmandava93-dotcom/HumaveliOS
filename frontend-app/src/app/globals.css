@@ -227,6 +227,45 @@ textarea {
   font-size: 12px;
 }
 
+
+/* ==========================================================
+   WORKFORCE TRENDS
+   ========================================================== */
+
+.workforce-trends-grid {
+  margin-bottom: 22px;
+}
+
+.trend-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin: -3px 0 18px;
+}
+
+.trend-summary strong {
+  color: #172033;
+  font-size: 28px;
+}
+
+.trend-summary span {
+  color: #7a8494;
+  font-size: 12px;
+}
+
+.trend-list {
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.analytics-note {
+  margin: 16px 0 0;
+  color: #8a94a3;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 /* ==========================================================
    BAR CHARTS
    ========================================================== */

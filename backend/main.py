@@ -758,6 +758,76 @@ def get_analytics_summary(
         if total_employees else 0
     )
 
+    # Workforce trend metrics are based only on valid joining dates.
+    # They describe hiring activity recorded in the employee master data,
+    # rather than pretending we have a full historical headcount ledger.
+    month_starts: list[date] = []
+    anchor = date(today.year, today.month, 1)
+    for offset in range(11, -1, -1):
+        year = anchor.year
+        month = anchor.month - offset
+        while month <= 0:
+            year -= 1
+            month += 12
+        month_starts.append(date(year, month, 1))
+
+    hiring_counts = {month_start: 0 for month_start in month_starts}
+    valid_joining_dates: list[date] = []
+    for employee in employees:
+        joining_date = (
+            employee.date_of_joining.date()
+            if isinstance(employee.date_of_joining, datetime)
+            else employee.date_of_joining
+        )
+        if not joining_date:
+            continue
+        if joining_date <= today:
+            valid_joining_dates.append(joining_date)
+        for index, month_start in enumerate(month_starts):
+            next_month = (
+                date(month_start.year + 1, 1, 1)
+                if month_start.month == 12
+                else date(month_start.year, month_start.month + 1, 1)
+            )
+            if month_start <= joining_date < next_month:
+                hiring_counts[month_start] += 1
+                break
+
+    monthly_hiring_trend = [
+        {
+            "month": month_start.isoformat(),
+            "label": month_start.strftime("%b %Y"),
+            "count": hiring_counts[month_start],
+        }
+        for month_start in month_starts
+    ]
+
+    tenure_distribution = {
+        "< 3 mo": 0,
+        "3–6 mo": 0,
+        "6–12 mo": 0,
+        "1–2 yr": 0,
+        "2+ yr": 0,
+    }
+    for joining_date in valid_joining_dates:
+        months = max((today - joining_date).days / 30.44, 0)
+        if months < 3:
+            tenure_distribution["< 3 mo"] += 1
+        elif months < 6:
+            tenure_distribution["3–6 mo"] += 1
+        elif months < 12:
+            tenure_distribution["6–12 mo"] += 1
+        elif months < 24:
+            tenure_distribution["1–2 yr"] += 1
+        else:
+            tenure_distribution["2+ yr"] += 1
+
+    recent_joiners_90_days = sum(
+        1
+        for joining_date in valid_joining_dates
+        if (today - joining_date).days <= 90
+    )
+
     top_department = (
         max(department_breakdown, key=department_breakdown.get)
         if department_breakdown
@@ -827,6 +897,9 @@ def get_analytics_summary(
         "performance_scored_count": len(valid_performance_scores),
         "performance_coverage": performance_coverage,
         "average_tenure_months": average_tenure_months,
+        "recent_joiners_90_days": recent_joiners_90_days,
+        "monthly_hiring_trend": monthly_hiring_trend,
+        "tenure_distribution": tenure_distribution,
         "department_breakdown": dict(sorted(department_breakdown.items(), key=lambda item: item[1], reverse=True)),
         "employment_type_breakdown": dict(sorted(employment_type_breakdown.items(), key=lambda item: item[1], reverse=True)),
         "location_breakdown": dict(sorted(location_breakdown.items(), key=lambda item: item[1], reverse=True)),
