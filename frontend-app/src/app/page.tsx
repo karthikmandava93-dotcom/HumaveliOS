@@ -1935,7 +1935,7 @@ export default function Home() {
           )}
           <button
             className="refresh-button"
-            onClick={loadDashboard}
+            onClick={() => loadDashboard()}
             disabled={loading}
           >
             {loading ? "Loading..." : "Refresh Data"}
