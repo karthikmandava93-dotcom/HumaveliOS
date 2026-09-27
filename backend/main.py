@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr
 from sqlalchemy.orm import Session
 
 from database import Base, engine, get_db
-from models import Employee
+from models import Candidate, Employee
 
 
 # ============================================================
@@ -84,6 +84,54 @@ class EmployeeResponse(BaseModel):
     performance_score: Optional[float] = None
     skills: Optional[str] = None
     is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+RECRUITMENT_STAGES = [
+    "Applied",
+    "Screening",
+    "Interview",
+    "Offer",
+    "Hired",
+    "Rejected",
+    "Withdrawn",
+]
+
+
+class CandidateCreate(BaseModel):
+    candidate_id: str
+    full_name: str
+    email: EmailStr
+    role: str
+    department: str
+    source: str = "Direct"
+    stage: str = "Applied"
+    applied_date: date
+    interview_date: Optional[date] = None
+    offer_date: Optional[date] = None
+    hired_date: Optional[date] = None
+    recruiter: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class CandidateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    candidate_id: str
+    full_name: str
+    email: EmailStr
+    role: str
+    department: str
+    source: str
+    stage: str
+    applied_date: date
+    interview_date: Optional[date] = None
+    offer_date: Optional[date] = None
+    hired_date: Optional[date] = None
+    recruiter: Optional[str] = None
+    notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -642,6 +690,199 @@ def delete_employee(
 
 
 # ============================================================
+# RECRUITMENT CANDIDATES
+# ============================================================
+
+@app.get("/candidates", response_model=list[CandidateResponse])
+def get_candidates(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=500),
+    stage: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    query = db.query(Candidate)
+
+    if stage and stage != "All":
+        query = query.filter(Candidate.stage.ilike(f"%{stage}%"))
+
+    if search:
+        pattern = f"%{search}%"
+        query = query.filter(
+            (Candidate.candidate_id.ilike(pattern))
+            | (Candidate.full_name.ilike(pattern))
+            | (Candidate.email.ilike(pattern))
+            | (Candidate.role.ilike(pattern))
+            | (Candidate.department.ilike(pattern))
+            | (Candidate.source.ilike(pattern))
+        )
+
+    return query.order_by(Candidate.id.desc()).offset(skip).limit(limit).all()
+
+
+@app.post("/candidates", response_model=CandidateResponse, status_code=201)
+def create_candidate(candidate_data: CandidateCreate, db: Session = Depends(get_db)):
+    candidate_id = candidate_data.candidate_id.strip()
+    email = str(candidate_data.email).strip().lower()
+
+    if not candidate_id or not candidate_data.full_name.strip() or not candidate_data.role.strip() or not candidate_data.department.strip():
+        raise HTTPException(status_code=400, detail="Candidate ID, name, role and department are required")
+
+    if candidate_data.stage not in RECRUITMENT_STAGES:
+        raise HTTPException(status_code=400, detail=f"Stage must be one of: {', '.join(RECRUITMENT_STAGES)}")
+
+    if candidate_data.hired_date and candidate_data.hired_date < candidate_data.applied_date:
+        raise HTTPException(status_code=400, detail="Hired date cannot be before applied date")
+
+    if db.query(Candidate).filter(Candidate.candidate_id == candidate_id).first():
+        raise HTTPException(status_code=400, detail="Candidate ID already exists")
+
+    if db.query(Candidate).filter(Candidate.email == email).first():
+        raise HTTPException(status_code=400, detail="Candidate email already exists")
+
+    candidate = Candidate(
+        candidate_id=candidate_id,
+        full_name=candidate_data.full_name.strip(),
+        email=email,
+        role=candidate_data.role.strip(),
+        department=candidate_data.department.strip(),
+        source=candidate_data.source.strip() or "Direct",
+        stage=candidate_data.stage,
+        applied_date=candidate_data.applied_date,
+        interview_date=candidate_data.interview_date,
+        offer_date=candidate_data.offer_date,
+        hired_date=candidate_data.hired_date,
+        recruiter=candidate_data.recruiter.strip() if candidate_data.recruiter else None,
+        notes=candidate_data.notes.strip() if candidate_data.notes else None,
+    )
+    db.add(candidate)
+    db.commit()
+    db.refresh(candidate)
+    return candidate
+
+
+@app.put("/candidates/{candidate_id}", response_model=CandidateResponse)
+def update_candidate(candidate_id: int, candidate_data: CandidateCreate, db: Session = Depends(get_db)):
+    candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    if candidate_data.stage not in RECRUITMENT_STAGES:
+        raise HTTPException(status_code=400, detail=f"Stage must be one of: {', '.join(RECRUITMENT_STAGES)}")
+    if candidate_data.hired_date and candidate_data.hired_date < candidate_data.applied_date:
+        raise HTTPException(status_code=400, detail="Hired date cannot be before applied date")
+
+    new_id = candidate_data.candidate_id.strip()
+    new_email = str(candidate_data.email).strip().lower()
+    duplicate_id = db.query(Candidate).filter(Candidate.candidate_id == new_id, Candidate.id != candidate_id).first()
+    duplicate_email = db.query(Candidate).filter(Candidate.email == new_email, Candidate.id != candidate_id).first()
+    if duplicate_id:
+        raise HTTPException(status_code=400, detail="Candidate ID already exists")
+    if duplicate_email:
+        raise HTTPException(status_code=400, detail="Candidate email already exists")
+
+    candidate.candidate_id = new_id
+    candidate.full_name = candidate_data.full_name.strip()
+    candidate.email = new_email
+    candidate.role = candidate_data.role.strip()
+    candidate.department = candidate_data.department.strip()
+    candidate.source = candidate_data.source.strip() or "Direct"
+    candidate.stage = candidate_data.stage
+    candidate.applied_date = candidate_data.applied_date
+    candidate.interview_date = candidate_data.interview_date
+    candidate.offer_date = candidate_data.offer_date
+    candidate.hired_date = candidate_data.hired_date
+    candidate.recruiter = candidate_data.recruiter.strip() if candidate_data.recruiter else None
+    candidate.notes = candidate_data.notes.strip() if candidate_data.notes else None
+    db.commit()
+    db.refresh(candidate)
+    return candidate
+
+
+@app.delete("/candidates/{candidate_id}")
+def delete_candidate(candidate_id: int, db: Session = Depends(get_db)):
+    candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    db.delete(candidate)
+    db.commit()
+    return {"message": "Candidate deleted successfully"}
+
+
+@app.get("/recruitment/summary")
+def recruitment_summary(db: Session = Depends(get_db)):
+    candidates = db.query(Candidate).order_by(Candidate.id).all()
+    total = len(candidates)
+    open_pipeline = sum(1 for c in candidates if c.stage in {"Applied", "Screening", "Interview", "Offer"})
+    hired = sum(1 for c in candidates if c.stage == "Hired")
+    rejected = sum(1 for c in candidates if c.stage == "Rejected")
+    withdrawn = sum(1 for c in candidates if c.stage == "Withdrawn")
+
+    stage_breakdown = {stage: 0 for stage in RECRUITMENT_STAGES}
+    source_breakdown: dict[str, int] = {}
+    department_breakdown: dict[str, int] = {}
+    for c in candidates:
+        if c.stage in stage_breakdown:
+            stage_breakdown[c.stage] += 1
+        source = clean_dimension(c.source)
+        department = clean_dimension(c.department)
+        if source:
+            source_breakdown[source] = source_breakdown.get(source, 0) + 1
+        if department:
+            department_breakdown[department] = department_breakdown.get(department, 0) + 1
+
+    days_to_hire = []
+    recent_hires_90 = 0
+    today = date.today()
+    for c in candidates:
+        applied = c.applied_date.date() if isinstance(c.applied_date, datetime) else c.applied_date
+        hired_date = c.hired_date.date() if isinstance(c.hired_date, datetime) else c.hired_date
+        if c.stage == "Hired" and applied and hired_date and hired_date >= applied:
+            days_to_hire.append((hired_date - applied).days)
+            if (today - hired_date).days <= 90:
+                recent_hires_90 += 1
+
+    avg_time_to_hire = round(sum(days_to_hire) / len(days_to_hire), 1) if days_to_hire else None
+    hire_conversion = round((hired / total) * 100, 1) if total else 0
+
+    month_starts = []
+    anchor = date(today.year, today.month, 1)
+    for offset in range(5, -1, -1):
+        year, month = anchor.year, anchor.month - offset
+        while month <= 0:
+            year -= 1
+            month += 12
+        month_starts.append(date(year, month, 1))
+    application_counts = {m: 0 for m in month_starts}
+    for c in candidates:
+        applied = c.applied_date.date() if isinstance(c.applied_date, datetime) else c.applied_date
+        if not applied:
+            continue
+        for m in month_starts:
+            next_month = date(m.year + 1, 1, 1) if m.month == 12 else date(m.year, m.month + 1, 1)
+            if m <= applied < next_month:
+                application_counts[m] += 1
+                break
+
+    monthly_applications = [{"month": m.isoformat(), "label": m.strftime("%b %Y"), "count": application_counts[m]} for m in month_starts]
+
+    return {
+        "total_candidates": total,
+        "open_pipeline": open_pipeline,
+        "hired_candidates": hired,
+        "rejected_candidates": rejected,
+        "withdrawn_candidates": withdrawn,
+        "hire_conversion_rate": hire_conversion,
+        "average_time_to_hire_days": avg_time_to_hire,
+        "recent_hires_90_days": recent_hires_90,
+        "stage_breakdown": stage_breakdown,
+        "source_breakdown": dict(sorted(source_breakdown.items(), key=lambda x: x[1], reverse=True)),
+        "department_breakdown": dict(sorted(department_breakdown.items(), key=lambda x: x[1], reverse=True)),
+        "monthly_applications": monthly_applications,
+    }
+
+
+# ============================================================
 # ANALYTICS SUMMARY
 # ============================================================
 
@@ -906,5 +1147,6 @@ def get_analytics_summary(
         "performance_distribution": performance_distribution,
         "data_quality": missing_fields,
         "insights": insights,
+        "recruitment": recruitment_summary(db),
     }
 

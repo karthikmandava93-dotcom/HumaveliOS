@@ -83,6 +83,84 @@ type Analytics = {
     string,
     number
   >;
+  recruitment: RecruitmentAnalytics;
+};
+
+
+type RecruitmentAnalytics = {
+  total_candidates: number;
+  open_pipeline: number;
+  hired_candidates: number;
+  rejected_candidates: number;
+  withdrawn_candidates: number;
+  hire_conversion_rate: number;
+  average_time_to_hire_days: number | null;
+  recent_hires_90_days: number;
+  stage_breakdown: Record<string, number>;
+  source_breakdown: Record<string, number>;
+  department_breakdown: Record<string, number>;
+  monthly_applications: Array<{ month: string; label: string; count: number }>;
+};
+
+type Candidate = {
+  id: number;
+  candidate_id: string;
+  full_name: string;
+  email: string;
+  role: string;
+  department: string;
+  source: string;
+  stage: string;
+  applied_date: string;
+  interview_date: string | null;
+  offer_date: string | null;
+  hired_date: string | null;
+  recruiter: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type CandidateForm = {
+  candidate_id: string;
+  full_name: string;
+  email: string;
+  role: string;
+  department: string;
+  source: string;
+  stage: string;
+  applied_date: string;
+  interview_date: string;
+  offer_date: string;
+  hired_date: string;
+  recruiter: string;
+  notes: string;
+};
+
+const CANDIDATE_STAGES = [
+  "Applied",
+  "Screening",
+  "Interview",
+  "Offer",
+  "Hired",
+  "Rejected",
+  "Withdrawn",
+];
+
+const EMPTY_CANDIDATE_FORM: CandidateForm = {
+  candidate_id: "",
+  full_name: "",
+  email: "",
+  role: "",
+  department: "",
+  source: "Direct",
+  stage: "Applied",
+  applied_date: "",
+  interview_date: "",
+  offer_date: "",
+  hired_date: "",
+  recruiter: "",
+  notes: "",
 };
 
 
@@ -315,6 +393,41 @@ export default function Home() {
     setViewingEmployee,
   ] = useState<Employee | null>(null);
 
+  const [
+    candidates,
+    setCandidates,
+  ] = useState<Candidate[]>([]);
+
+  const [
+    showCandidateModal,
+    setShowCandidateModal,
+  ] = useState(false);
+
+  const [
+    editingCandidate,
+    setEditingCandidate,
+  ] = useState<Candidate | null>(null);
+
+  const [
+    candidateForm,
+    setCandidateForm,
+  ] = useState<CandidateForm>(EMPTY_CANDIDATE_FORM);
+
+  const [
+    candidateError,
+    setCandidateError,
+  ] = useState("");
+
+  const [
+    candidateSaving,
+    setCandidateSaving,
+  ] = useState(false);
+
+  const [
+    deletingCandidateId,
+    setDeletingCandidateId,
+  ] = useState<number | null>(null);
+
 
   /* ==========================================================
      LOAD DASHBOARD
@@ -331,6 +444,7 @@ export default function Home() {
       const [
         employeeData,
         analyticsData,
+        candidateData,
       ] = await Promise.all([
 
         apiRequest<Employee[]>(
@@ -339,6 +453,10 @@ export default function Home() {
 
         apiRequest<Analytics>(
           "/analytics/summary"
+        ),
+
+        apiRequest<Candidate[]>(
+          "/candidates?skip=0&limit=100"
         ),
       ]);
 
@@ -351,6 +469,8 @@ export default function Home() {
       setAnalytics(
         analyticsData
       );
+
+      setCandidates(candidateData);
 
     } catch (err) {
 
@@ -694,6 +814,112 @@ export default function Home() {
     setFormError("");
   }
 
+
+  function setCandidateField(field: keyof CandidateForm, value: string) {
+    setCandidateForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function openAddCandidateModal() {
+    setEditingCandidate(null);
+    setCandidateForm({ ...EMPTY_CANDIDATE_FORM });
+    setCandidateError("");
+    setShowCandidateModal(true);
+  }
+
+  function openEditCandidateModal(candidate: Candidate) {
+    setEditingCandidate(candidate);
+    setCandidateForm({
+      candidate_id: candidate.candidate_id,
+      full_name: candidate.full_name,
+      email: candidate.email,
+      role: candidate.role,
+      department: candidate.department,
+      source: candidate.source,
+      stage: candidate.stage,
+      applied_date: candidate.applied_date.slice(0, 10),
+      interview_date: candidate.interview_date?.slice(0, 10) ?? "",
+      offer_date: candidate.offer_date?.slice(0, 10) ?? "",
+      hired_date: candidate.hired_date?.slice(0, 10) ?? "",
+      recruiter: candidate.recruiter ?? "",
+      notes: candidate.notes ?? "",
+    });
+    setCandidateError("");
+    setShowCandidateModal(true);
+  }
+
+  function closeCandidateModal() {
+    if (candidateSaving) return;
+    setShowCandidateModal(false);
+    setEditingCandidate(null);
+    setCandidateForm({ ...EMPTY_CANDIDATE_FORM });
+    setCandidateError("");
+  }
+
+  async function handleCandidateSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCandidateError("");
+
+    if (!candidateForm.candidate_id.trim() || !candidateForm.full_name.trim() || !candidateForm.email.trim() || !candidateForm.role.trim() || !candidateForm.department.trim() || !candidateForm.applied_date) {
+      setCandidateError("Candidate ID, name, email, role, department and applied date are required.");
+      return;
+    }
+
+    setCandidateSaving(true);
+    try {
+      const payload = {
+        candidate_id: candidateForm.candidate_id.trim(),
+        full_name: candidateForm.full_name.trim(),
+        email: candidateForm.email.trim(),
+        role: candidateForm.role.trim(),
+        department: candidateForm.department.trim(),
+        source: candidateForm.source.trim() || "Direct",
+        stage: candidateForm.stage,
+        applied_date: candidateForm.applied_date,
+        interview_date: candidateForm.interview_date || null,
+        offer_date: candidateForm.offer_date || null,
+        hired_date: candidateForm.hired_date || null,
+        recruiter: candidateForm.recruiter.trim() || null,
+        notes: candidateForm.notes.trim() || null,
+      };
+
+      const saved = editingCandidate
+        ? await apiRequest<Candidate>(`/candidates/${editingCandidate.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+        : await apiRequest<Candidate>("/candidates", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+      setCandidates((current) =>
+        editingCandidate
+          ? current.map((candidate) => candidate.id === saved.id ? saved : candidate)
+          : [saved, ...current]
+      );
+      await loadDashboard();
+      closeCandidateModal();
+    } catch (err) {
+      setCandidateError(err instanceof Error ? err.message : "Unable to save candidate.");
+    } finally {
+      setCandidateSaving(false);
+    }
+  }
+
+  async function handleDeleteCandidate(candidate: Candidate) {
+    if (!window.confirm(`Delete candidate ${candidate.full_name}?`)) return;
+    setDeletingCandidateId(candidate.id);
+    try {
+      await apiRequest(`/candidates/${candidate.id}`, { method: "DELETE" });
+      await loadDashboard();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to delete candidate.");
+    } finally {
+      setDeletingCandidateId(null);
+    }
+  }
 
   /* ==========================================================
      CREATE / UPDATE
@@ -1739,6 +1965,88 @@ export default function Home() {
 
 
           {/* ==================================================
+              RECRUITMENT HUB
+              ================================================== */}
+
+          <section className="recruitment-section">
+            <div className="panel recruitment-overview">
+              <div className="panel-header recruitment-header">
+                <div>
+                  <h2>Recruitment Hub</h2>
+                  <p>Candidate pipeline and hiring analytics based on recorded recruitment data</p>
+                </div>
+                <button className="add-button" onClick={openAddCandidateModal}>+ Add Candidate</button>
+              </div>
+
+              <div className="recruitment-kpi-grid">
+                <div className="recruitment-kpi"><span>Total Candidates</span><strong>{analytics.recruitment.total_candidates}</strong><small>Recorded applicants</small></div>
+                <div className="recruitment-kpi"><span>Open Pipeline</span><strong>{analytics.recruitment.open_pipeline}</strong><small>Applied to offer</small></div>
+                <div className="recruitment-kpi"><span>Hired</span><strong>{analytics.recruitment.hired_candidates}</strong><small>Recorded hires</small></div>
+                <div className="recruitment-kpi"><span>Avg. Time to Hire</span><strong>{analytics.recruitment.average_time_to_hire_days === null ? "—" : `${analytics.recruitment.average_time_to_hire_days} d`}</strong><small>Hired candidates with dates</small></div>
+                <div className="recruitment-kpi"><span>Hire Conversion</span><strong>{analytics.recruitment.hire_conversion_rate}%</strong><small>Hires / recorded candidates</small></div>
+              </div>
+
+              <div className="recruitment-analytics-grid">
+                <div>
+                  <h3>Pipeline by stage</h3>
+                  <div className="pipeline-grid">
+                    {Object.entries(analytics.recruitment.stage_breakdown).map(([stage, count]) => (
+                      <div className="pipeline-stage" key={stage}>
+                        <div><span>{stage}</span><strong>{count}</strong></div>
+                        <div className="bar-track"><div className="bar-fill blue-fill" style={{ width: `${Math.min(100, Math.max(0, (count / Math.max(1, analytics.recruitment.total_candidates)) * 100))}%` }} /></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h3>Application trend</h3>
+                  <div className="trend-list recruitment-trend-list">
+                    {analytics.recruitment.monthly_applications.map((item) => (
+                      <div className="chart-item" key={item.month}>
+                        <div className="chart-item-top"><span>{item.label}</span><strong>{item.count}</strong></div>
+                        <div className="bar-track"><div className="bar-fill purple-fill" style={{ width: `${Math.min(100, Math.max(0, (item.count / Math.max(1, ...analytics.recruitment.monthly_applications.map((x) => x.count))) * 100))}%` }} /></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="recruitment-breakdowns">
+                <div><h3>Candidate sources</h3>{Object.keys(analytics.recruitment.source_breakdown).length ? Object.entries(analytics.recruitment.source_breakdown).map(([source,count]) => <div className="breakdown-line" key={source}><span>{source}</span><strong>{count}</strong></div>) : <div className="profile-empty">No recruitment source data recorded yet.</div>}</div>
+                <div><h3>Hiring departments</h3>{Object.keys(analytics.recruitment.department_breakdown).length ? Object.entries(analytics.recruitment.department_breakdown).map(([department,count]) => <div className="breakdown-line" key={department}><span>{department}</span><strong>{count}</strong></div>) : <div className="profile-empty">No department data recorded yet.</div>}</div>
+              </div>
+
+              <p className="analytics-note">Recruitment metrics are based only on candidate records stored in PeopleOS. No applicant, hire, or conversion data is inferred.</p>
+            </div>
+
+            <div className="panel candidate-panel">
+              <div className="panel-header">
+                <div>
+                  <h2>Candidate Pipeline</h2>
+                  <p>Manage and track candidate progress</p>
+                </div>
+                <span className="employee-count">{candidates.length} recorded</span>
+              </div>
+              <div className="table-container">
+                <table>
+                  <thead><tr><th>Candidate</th><th>Role</th><th>Department</th><th>Source</th><th>Stage</th><th>Applied</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    {candidates.length ? candidates.map((candidate) => (
+                      <tr key={candidate.id}>
+                        <td><div className="employee-cell"><div className="avatar">{displayText(candidate.full_name, "?").charAt(0).toUpperCase()}</div><div><div className="employee-name">{displayText(candidate.full_name, "Unnamed candidate")}</div><div className="employee-meta">{displayText(candidate.candidate_id, "No ID")} · {displayText(candidate.email, "No email")}</div></div></div></td>
+                        <td>{displayText(candidate.role)}</td><td>{displayText(candidate.department)}</td><td>{displayText(candidate.source)}</td>
+                        <td><span className={`candidate-stage stage-${candidate.stage.toLowerCase().replace(/[^a-z]+/g, "-")}`}>{candidate.stage}</span></td>
+                        <td>{formatDate(candidate.applied_date)}</td>
+                        <td><div className="row-actions"><button className="view-button" onClick={() => openEditCandidateModal(candidate)}>Edit</button><button className="delete-button" onClick={() => handleDeleteCandidate(candidate)} disabled={deletingCandidateId === candidate.id}>{deletingCandidateId === candidate.id ? "Deleting..." : "Delete"}</button></div></td>
+                      </tr>
+                    )) : <tr><td colSpan={7} className="empty-state">No candidates recorded yet. Add a candidate to start building your recruitment analytics.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          {/* ==================================================
               EMPLOYEE MANAGEMENT
               ================================================== */}
 
@@ -2115,6 +2423,37 @@ export default function Home() {
 
       )}
 
+
+      {/* ======================================================
+          CANDIDATE MODAL
+          ====================================================== */}
+
+      {showCandidateModal && (
+        <div className="modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closeCandidateModal(); }}>
+          <div className="modal">
+            <div className="modal-header"><div><h2>{editingCandidate ? "Edit Candidate" : "Add Candidate"}</h2><p>Candidate pipeline record</p></div><button className="close-button" onClick={closeCandidateModal} aria-label="Close candidate form">×</button></div>
+            {candidateError && <div className="form-error">{candidateError}</div>}
+            <form onSubmit={handleCandidateSubmit}>
+              <div className="form-grid">
+                <div className="form-field"><label>Candidate ID</label><input value={candidateForm.candidate_id} onChange={(e) => setCandidateField("candidate_id", e.target.value)} placeholder="CAN001" disabled={candidateSaving}/></div>
+                <div className="form-field"><label>Full Name</label><input value={candidateForm.full_name} onChange={(e) => setCandidateField("full_name", e.target.value)} placeholder="Candidate name" disabled={candidateSaving}/></div>
+                <div className="form-field"><label>Email</label><input type="email" value={candidateForm.email} onChange={(e) => setCandidateField("email", e.target.value)} placeholder="candidate@example.com" disabled={candidateSaving}/></div>
+                <div className="form-field"><label>Role</label><input value={candidateForm.role} onChange={(e) => setCandidateField("role", e.target.value)} placeholder="HR Analyst" disabled={candidateSaving}/></div>
+                <div className="form-field"><label>Department</label><input value={candidateForm.department} onChange={(e) => setCandidateField("department", e.target.value)} placeholder="Human Resources" disabled={candidateSaving}/></div>
+                <div className="form-field"><label>Source</label><input value={candidateForm.source} onChange={(e) => setCandidateField("source", e.target.value)} placeholder="LinkedIn" disabled={candidateSaving}/></div>
+                <div className="form-field"><label>Stage</label><select value={candidateForm.stage} onChange={(e) => setCandidateField("stage", e.target.value)} disabled={candidateSaving}>{CANDIDATE_STAGES.map((stage) => <option value={stage} key={stage}>{stage}</option>)}</select></div>
+                <div className="form-field"><label>Applied Date</label><input type="date" value={candidateForm.applied_date} onChange={(e) => setCandidateField("applied_date", e.target.value)} disabled={candidateSaving}/></div>
+                <div className="form-field"><label>Interview Date</label><input type="date" value={candidateForm.interview_date} onChange={(e) => setCandidateField("interview_date", e.target.value)} disabled={candidateSaving}/></div>
+                <div className="form-field"><label>Offer Date</label><input type="date" value={candidateForm.offer_date} onChange={(e) => setCandidateField("offer_date", e.target.value)} disabled={candidateSaving}/></div>
+                <div className="form-field"><label>Hired Date</label><input type="date" value={candidateForm.hired_date} onChange={(e) => setCandidateField("hired_date", e.target.value)} disabled={candidateSaving}/></div>
+                <div className="form-field"><label>Recruiter</label><input value={candidateForm.recruiter} onChange={(e) => setCandidateField("recruiter", e.target.value)} placeholder="Recruiter name" disabled={candidateSaving}/></div>
+              </div>
+              <div className="form-field full-field"><label>Notes</label><textarea value={candidateForm.notes} onChange={(e) => setCandidateField("notes", e.target.value)} rows={3} placeholder="Interview notes or follow-up details" disabled={candidateSaving}/></div>
+              <div className="modal-actions"><button type="button" className="cancel-button" onClick={closeCandidateModal} disabled={candidateSaving}>Cancel</button><button type="submit" className="save-button" disabled={candidateSaving}>{candidateSaving ? "Saving..." : editingCandidate ? "Save Changes" : "Create Candidate"}</button></div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ======================================================
           EMPLOYEE 360 PROFILE
