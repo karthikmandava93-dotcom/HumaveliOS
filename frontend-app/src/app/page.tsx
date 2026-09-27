@@ -101,6 +101,22 @@ type RecruitmentAnalytics = {
   source_breakdown: Record<string, number>;
   department_breakdown: Record<string, number>;
   monthly_applications: Array<{ month: string; label: string; count: number }>;
+  funnel_intelligence: {
+    eligible_candidate_count: number;
+    excluded_dispositions: Record<string, number>;
+    stage_reach: Record<string, number>;
+    stage_conversion: Record<string, number | null>;
+    largest_drop: {
+      from_stage: string;
+      to_stage: string;
+      from_count: number;
+      to_count: number;
+      drop_count: number;
+      drop_rate: number;
+    } | null;
+    source_effectiveness: Record<string, { candidates: number; hires: number; hire_rate: number }>;
+    insights: Array<{ type: "info" | "attention"; title: string; message: string }>;
+  };
 };
 
 type Candidate = {
@@ -2292,6 +2308,92 @@ export default function Home() {
                     ))}
                   </div>
                 </div>
+              </div>
+
+              <div className="funnel-intelligence">
+                <div className="funnel-intelligence-header">
+                  <div>
+                    <h3>Funnel Intelligence</h3>
+                    <p>Current-stage funnel reach and source-level hiring signals</p>
+                  </div>
+                  <span className="funnel-scope-badge">{analytics.recruitment.funnel_intelligence.eligible_candidate_count} in funnel</span>
+                </div>
+
+                <div className="funnel-intelligence-grid">
+                  <div>
+                    <div className="funnel-stage-list">
+                      {Object.entries(analytics.recruitment.funnel_intelligence.stage_reach).map(([stage, count]) => (
+                        <div className="funnel-stage-row" key={stage}>
+                          <div className="funnel-stage-row-top">
+                            <span>{stage}</span>
+                            <strong>{count}</strong>
+                          </div>
+                          <div className="bar-track">
+                            <div
+                              className="bar-fill blue-fill"
+                              style={{
+                                width: `${Math.min(100, Math.max(0, (count / Math.max(1, analytics.recruitment.funnel_intelligence.eligible_candidate_count)) * 100))}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="conversion-list">
+                      {Object.entries(analytics.recruitment.funnel_intelligence.stage_conversion).map(([transition, rate]) => (
+                        <div className="conversion-item" key={transition}>
+                          <span>{transition}</span>
+                          <strong>{rate === null ? "—" : `${rate}%`}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4>Funnel signal</h4>
+                    {analytics.recruitment.funnel_intelligence.largest_drop && analytics.recruitment.funnel_intelligence.largest_drop.drop_count > 0 ? (
+                      <div className="funnel-signal-card attention">
+                        <strong>Largest recorded drop</strong>
+                        <span>
+                          {analytics.recruitment.funnel_intelligence.largest_drop.from_stage} → {analytics.recruitment.funnel_intelligence.largest_drop.to_stage}
+                        </span>
+                        <small>
+                          {analytics.recruitment.funnel_intelligence.largest_drop.drop_count} candidate(s) · {analytics.recruitment.funnel_intelligence.largest_drop.drop_rate}% drop
+                        </small>
+                      </div>
+                    ) : (
+                      <div className="funnel-signal-card">
+                        <strong>No material funnel drop detected</strong>
+                        <small>More stage history is needed for deeper conversion analysis.</small>
+                      </div>
+                    )}
+
+                    <h4 className="source-effectiveness-title">Source effectiveness</h4>
+                    <div className="source-effectiveness-list">
+                      {Object.entries(analytics.recruitment.funnel_intelligence.source_effectiveness).map(([source, details]) => (
+                        <div className="source-effectiveness-item" key={source}>
+                          <div>
+                            <span>{source}</span>
+                            <small>{details.hires} hire(s) / {details.candidates} candidate(s)</small>
+                          </div>
+                          <strong>{details.hire_rate}%</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="funnel-insights">
+                  {analytics.recruitment.funnel_intelligence.insights.map((insight) => (
+                    <div className={`funnel-insight ${insight.type}`} key={`${insight.title}-${insight.message}`}>
+                      <strong>{insight.title}</strong>
+                      <span>{insight.message}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <p className="analytics-note">Funnel reach uses the candidate's current recorded stage. Rejected and withdrawn records are excluded because PeopleOS does not yet store full stage-history events.</p>
               </div>
 
               <div className="recruitment-breakdowns">

@@ -1580,6 +1580,206 @@ td {
   color: #172033;
 }
 
+/* ==========================================================
+   FUNNEL INTELLIGENCE
+   ========================================================== */
+
+.funnel-intelligence {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #edf0f4;
+}
+
+.funnel-intelligence-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.funnel-intelligence-header h3,
+.funnel-intelligence h4 {
+  margin: 0;
+}
+
+.funnel-intelligence-header p {
+  margin: 5px 0 0;
+  color: #8a94a3;
+  font-size: 12px;
+}
+
+.funnel-scope-badge {
+  flex-shrink: 0;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.funnel-intelligence-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.funnel-stage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.funnel-stage-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.funnel-stage-row-top span {
+  color: #4b5565;
+  font-size: 12px;
+}
+
+.funnel-stage-row-top strong {
+  color: #172033;
+  font-size: 12px;
+}
+
+.conversion-list {
+  margin-top: 16px;
+  display: grid;
+  gap: 7px;
+}
+
+.conversion-item,
+.source-effectiveness-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.conversion-item span {
+  color: #667085;
+  font-size: 11px;
+}
+
+.conversion-item strong {
+  color: #172033;
+  font-size: 12px;
+}
+
+.funnel-signal-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 12px;
+  padding: 13px;
+  border: 1px solid #e5e9f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.funnel-signal-card.attention {
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
+.funnel-signal-card strong {
+  color: #172033;
+  font-size: 12px;
+}
+
+.funnel-signal-card span {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.funnel-signal-card small {
+  color: #8a94a3;
+  font-size: 11px;
+}
+
+.source-effectiveness-title {
+  margin-top: 18px !important;
+}
+
+.source-effectiveness-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.source-effectiveness-item > div {
+  min-width: 0;
+}
+
+.source-effectiveness-item span {
+  display: block;
+  color: #475569;
+  font-size: 12px;
+}
+
+.source-effectiveness-item small {
+  display: block;
+  margin-top: 2px;
+  color: #97a0ae;
+  font-size: 10px;
+}
+
+.source-effectiveness-item > strong {
+  flex-shrink: 0;
+  color: #047857;
+  font-size: 12px;
+}
+
+.funnel-insights {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.funnel-insight {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  background: #f8fafc;
+}
+
+.funnel-insight.attention {
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
+.funnel-insight strong {
+  color: #334155;
+  font-size: 11px;
+}
+
+.funnel-insight span {
+  color: #7a8494;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+@media (max-width: 900px) {
+  .funnel-intelligence-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .candidate-panel {
   padding: 0;
   overflow: hidden;

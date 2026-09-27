@@ -952,6 +952,117 @@ def recruitment_summary(db: Session = Depends(get_db)):
 
     monthly_applications = [{"month": m.isoformat(), "label": m.strftime("%b %Y"), "count": application_counts[m]} for m in month_starts]
 
+    # ------------------------------------------------------------
+    # FUNNEL INTELLIGENCE
+    # ------------------------------------------------------------
+    # The current Candidate model stores the candidate's current stage,
+    # not a historical stage timeline. Therefore, funnel reach is a
+    # current-stage snapshot for candidates still in the recorded funnel
+    # (Applied → Screening → Interview → Offer → Hired). Rejected and
+    # Withdrawn records are excluded because their earlier stage cannot
+    # be reconstructed honestly from the current schema.
+    funnel_stages = ["Applied", "Screening", "Interview", "Offer", "Hired"]
+    funnel_candidates = [
+        c for c in candidates
+        if c.stage in funnel_stages
+    ]
+
+    stage_reach = {}
+    for index, stage in enumerate(funnel_stages):
+        stage_reach[stage] = sum(
+            1
+            for candidate in funnel_candidates
+            if funnel_stages.index(candidate.stage) >= index
+        )
+
+    stage_conversion = {}
+    largest_drop = None
+    for index in range(1, len(funnel_stages)):
+        previous_stage = funnel_stages[index - 1]
+        current_stage = funnel_stages[index]
+        previous_count = stage_reach[previous_stage]
+        current_count = stage_reach[current_stage]
+        conversion = (
+            round((current_count / previous_count) * 100, 1)
+            if previous_count
+            else None
+        )
+        stage_conversion[f"{previous_stage} → {current_stage}"] = conversion
+
+        if previous_count:
+            drop_count = previous_count - current_count
+            drop_rate = round((drop_count / previous_count) * 100, 1)
+            candidate_drop = {
+                "from_stage": previous_stage,
+                "to_stage": current_stage,
+                "from_count": previous_count,
+                "to_count": current_count,
+                "drop_count": drop_count,
+                "drop_rate": drop_rate,
+            }
+            if largest_drop is None or candidate_drop["drop_rate"] > largest_drop["drop_rate"]:
+                largest_drop = candidate_drop
+
+    source_effectiveness = {}
+    for source, source_total in sorted(source_breakdown.items(), key=lambda x: (-x[1], x[0].lower())):
+        source_hires = sum(
+            1
+            for candidate in candidates
+            if clean_dimension(candidate.source) == source and candidate.stage == "Hired"
+        )
+        source_effectiveness[source] = {
+            "candidates": source_total,
+            "hires": source_hires,
+            "hire_rate": round((source_hires / source_total) * 100, 1) if source_total else 0,
+        }
+
+    funnel_insights = []
+    if funnel_candidates:
+        funnel_insights.append({
+            "type": "info",
+            "title": "Current funnel reach",
+            "message": (
+                f"{len(funnel_candidates)} of {total} recorded candidates are currently in the "
+                f"Applied-to-Hired funnel snapshot. Rejected and withdrawn records are excluded."
+            ),
+        })
+    if largest_drop and largest_drop["drop_count"] > 0:
+        funnel_insights.append({
+            "type": "attention",
+            "title": "Largest recorded funnel drop",
+            "message": (
+                f"The largest drop is between {largest_drop['from_stage']} and {largest_drop['to_stage']}: "
+                f"{largest_drop['drop_count']} candidate(s), or {largest_drop['drop_rate']}%."
+            ),
+        })
+    if source_effectiveness:
+        highest_hire_rate_source = max(
+            source_effectiveness.items(),
+            key=lambda item: (item[1]["hire_rate"], item[1]["hires"], item[1]["candidates"], item[0].lower()),
+        )
+        if highest_hire_rate_source[1]["hires"] > 0:
+            funnel_insights.append({
+                "type": "info",
+                "title": "Recorded source hire rate",
+                "message": (
+                    f"{highest_hire_rate_source[0]} has the highest recorded hire rate at "
+                    f"{highest_hire_rate_source[1]['hire_rate']}% ({highest_hire_rate_source[1]['hires']} hire(s))."
+                ),
+            })
+
+    funnel_intelligence = {
+        "eligible_candidate_count": len(funnel_candidates),
+        "excluded_dispositions": {
+            "Rejected": rejected,
+            "Withdrawn": withdrawn,
+        },
+        "stage_reach": stage_reach,
+        "stage_conversion": stage_conversion,
+        "largest_drop": largest_drop,
+        "source_effectiveness": source_effectiveness,
+        "insights": funnel_insights,
+    }
+
     return {
         "total_candidates": total,
         "open_pipeline": open_pipeline,
@@ -965,6 +1076,7 @@ def recruitment_summary(db: Session = Depends(get_db)):
         "source_breakdown": dict(sorted(source_breakdown.items(), key=lambda x: x[1], reverse=True)),
         "department_breakdown": dict(sorted(department_breakdown.items(), key=lambda x: x[1], reverse=True)),
         "monthly_applications": monthly_applications,
+        "funnel_intelligence": funnel_intelligence,
     }
 
 
