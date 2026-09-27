@@ -85,6 +85,21 @@ type Analytics = {
     number
   >;
   recruitment: RecruitmentAnalytics;
+  lifecycle: LifecycleAnalytics;
+};
+
+type LifecycleAnalytics = {
+  total_employees: number;
+  recorded_lifecycle_records: number;
+  recorded_exits: number;
+  recent_exits_90_days: number;
+  recent_joiners_90_days: number;
+  status_breakdown: Record<string, number>;
+  exit_reason_breakdown: Record<string, number>;
+  monthly_exits: Array<{ month: string; label: string; count: number }>;
+  unrecorded_inactive: number;
+  insights: Array<{ type: "info" | "attention"; title: string; message: string }>;
+  attrition_note: string;
 };
 
 
@@ -201,6 +216,35 @@ const EMPTY_CANDIDATE_FORM: CandidateForm = {
   hired_date: "",
   recruiter: "",
   notes: "",
+};
+
+
+type EmployeeLifecycle = {
+  employee_id: number;
+  employee_name: string;
+  lifecycle_status: string;
+  exit_date: string | null;
+  exit_reason: string | null;
+  exit_notes: string | null;
+  has_lifecycle_record: boolean;
+  updated_at: string | null;
+};
+
+type LifecycleForm = {
+  lifecycle_status: string;
+  exit_date: string;
+  exit_reason: string;
+  exit_notes: string;
+};
+
+const LIFECYCLE_STATUSES = ["Onboarding", "Active", "On Leave", "Offboarding", "Exited"];
+const EXIT_REASONS = ["Resignation", "Termination", "Layoff", "Retirement", "Contract End", "Relocation", "Other"];
+
+const EMPTY_LIFECYCLE_FORM: LifecycleForm = {
+  lifecycle_status: "Active",
+  exit_date: "",
+  exit_reason: "",
+  exit_notes: "",
 };
 
 
@@ -577,6 +621,36 @@ export default function Home() {
   ] = useState<Employee | null>(null);
 
   const [
+    viewingLifecycle,
+    setViewingLifecycle,
+  ] = useState<EmployeeLifecycle | null>(null);
+
+  const [
+    lifecycleLoading,
+    setLifecycleLoading,
+  ] = useState(false);
+
+  const [
+    showLifecycleModal,
+    setShowLifecycleModal,
+  ] = useState(false);
+
+  const [
+    lifecycleForm,
+    setLifecycleForm,
+  ] = useState<LifecycleForm>({ ...EMPTY_LIFECYCLE_FORM });
+
+  const [
+    lifecycleError,
+    setLifecycleError,
+  ] = useState("");
+
+  const [
+    lifecycleSaving,
+    setLifecycleSaving,
+  ] = useState(false);
+
+  const [
     candidates,
     setCandidates,
   ] = useState<Candidate[]>([]);
@@ -920,13 +994,89 @@ export default function Home() {
   }
 
 
-  function openEmployeeProfile(employee: Employee) {
+  async function openEmployeeProfile(employee: Employee) {
     setViewingEmployee(employee);
+    setViewingLifecycle(null);
+    setLifecycleLoading(true);
+    setLifecycleError("");
+
+    try {
+      const lifecycle = await apiRequest<EmployeeLifecycle>(
+        `/employees/${employee.id}/lifecycle`
+      );
+      setViewingLifecycle(lifecycle);
+    } catch (err) {
+      setLifecycleError(
+        err instanceof Error ? err.message : "Unable to load employee lifecycle."
+      );
+    } finally {
+      setLifecycleLoading(false);
+    }
   }
 
 
   function closeEmployeeProfile() {
     setViewingEmployee(null);
+    setViewingLifecycle(null);
+    setLifecycleError("");
+  }
+
+
+  function openLifecycleModal() {
+    if (!viewingEmployee) return;
+    setLifecycleForm({
+      lifecycle_status: viewingLifecycle?.lifecycle_status || (viewingEmployee.is_active ? "Active" : "Exited"),
+      exit_date: viewingLifecycle?.exit_date?.slice(0, 10) || "",
+      exit_reason: viewingLifecycle?.exit_reason || "",
+      exit_notes: viewingLifecycle?.exit_notes || "",
+    });
+    setLifecycleError("");
+    setShowLifecycleModal(true);
+  }
+
+
+  function closeLifecycleModal() {
+    if (lifecycleSaving) return;
+    setShowLifecycleModal(false);
+    setLifecycleError("");
+  }
+
+
+  async function handleLifecycleSave(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!viewingEmployee) return;
+    setLifecycleError("");
+
+    if (lifecycleForm.lifecycle_status === "Exited" && !lifecycleForm.exit_date) {
+      setLifecycleError("Exit date is required when lifecycle status is Exited.");
+      return;
+    }
+
+    setLifecycleSaving(true);
+    try {
+      const saved = await apiRequest<EmployeeLifecycle>(
+        `/employees/${viewingEmployee.id}/lifecycle`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lifecycle_status: lifecycleForm.lifecycle_status,
+            exit_date: lifecycleForm.lifecycle_status === "Exited" ? lifecycleForm.exit_date : null,
+            exit_reason: lifecycleForm.lifecycle_status === "Exited" ? (lifecycleForm.exit_reason || null) : null,
+            exit_notes: lifecycleForm.lifecycle_status === "Exited" ? (lifecycleForm.exit_notes || null) : null,
+          }),
+        }
+      );
+      setViewingLifecycle(saved);
+      await loadDashboard();
+      setShowLifecycleModal(false);
+    } catch (err) {
+      setLifecycleError(
+        err instanceof Error ? err.message : "Unable to save lifecycle information."
+      );
+    } finally {
+      setLifecycleSaving(false);
+    }
   }
 
 
@@ -2253,6 +2403,89 @@ export default function Home() {
 
 
           {/* ==================================================
+              EMPLOYEE LIFECYCLE
+              ================================================== */}
+
+          <section className="lifecycle-section">
+
+            <div className="panel">
+              <div className="panel-header lifecycle-header">
+                <div>
+                  <h2>Employee Lifecycle</h2>
+                  <p>Track workforce stages and recorded exits without assuming historical attrition data.</p>
+                </div>
+                <span className="lifecycle-scope-badge">{analytics.lifecycle.recorded_lifecycle_records} recorded</span>
+              </div>
+
+              <div className="lifecycle-kpi-grid">
+                <div className="recruitment-kpi"><span>Recent Joiners</span><strong>{analytics.lifecycle.recent_joiners_90_days}</strong><small>Last 90 days</small></div>
+                <div className="recruitment-kpi"><span>Recorded Exits</span><strong>{analytics.lifecycle.recorded_exits}</strong><small>Exit dates recorded</small></div>
+                <div className="recruitment-kpi"><span>Recent Exits</span><strong>{analytics.lifecycle.recent_exits_90_days}</strong><small>Last 90 days</small></div>
+                <div className="recruitment-kpi"><span>Unrecorded Inactive</span><strong>{analytics.lifecycle.unrecorded_inactive}</strong><small>Need lifecycle review</small></div>
+              </div>
+
+              <div className="lifecycle-grid">
+                <div>
+                  <h3>Lifecycle status</h3>
+                  <div className="chart-list">
+                    {Object.entries(analytics.lifecycle.status_breakdown).map(([status, count]) => (
+                      <div className="chart-item" key={status}>
+                        <div className="chart-item-top"><span>{status}</span><strong>{count}</strong></div>
+                        <div className="bar-track"><div className="bar-fill green-fill" style={{ width: `${barWidth(count, analytics.lifecycle.status_breakdown)}%` }} /></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <h3>Exit reasons</h3>
+                  {Object.keys(analytics.lifecycle.exit_reason_breakdown).length ? (
+                    <div className="chart-list">
+                      {Object.entries(analytics.lifecycle.exit_reason_breakdown).map(([reason, count]) => (
+                        <div className="chart-item" key={reason}>
+                          <div className="chart-item-top"><span>{reason}</span><strong>{count}</strong></div>
+                          <div className="bar-track"><div className="bar-fill purple-fill" style={{ width: `${barWidth(count, analytics.lifecycle.exit_reason_breakdown)}%` }} /></div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="profile-empty">No recorded exit reasons yet.</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="lifecycle-grid lifecycle-secondary-grid">
+                <div>
+                  <h3>Monthly recorded exits</h3>
+                  <div className="chart-list trend-list">
+                    {analytics.lifecycle.monthly_exits.map((item) => (
+                      <div className="chart-item" key={item.month}>
+                        <div className="chart-item-top"><span>{item.label}</span><strong>{item.count}</strong></div>
+                        <div className="bar-track"><div className="bar-fill orange-fill" style={{ width: `${barWidth(item.count, Object.fromEntries(analytics.lifecycle.monthly_exits.map((x) => [x.month, x.count])))}%` }} /></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <h3>Lifecycle insights</h3>
+                  <div className="insight-list">
+                    {analytics.lifecycle.insights.map((insight) => (
+                      <div className={`insight-item ${insight.type}`} key={`${insight.title}-${insight.message}`}>
+                        <div className="insight-marker">{insight.type === "attention" ? "!" : "i"}</div>
+                        <div><strong>{insight.title}</strong><p>{insight.message}</p></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <p className="analytics-note">{analytics.lifecycle.attrition_note}</p>
+            </div>
+          </section>
+
+
+          {/* ==================================================
               RECRUITMENT HUB
               ================================================== */}
 
@@ -2983,6 +3216,37 @@ export default function Home() {
 
               </div>
 
+              <section className="profile-section lifecycle-profile-section">
+                <div className="profile-section-header">
+                  <div className="lifecycle-profile-header">
+                    <div>
+                      <h3>Employee lifecycle</h3>
+                      <p>Recorded employment stage and exit information</p>
+                    </div>
+                    <button className="secondary-button" onClick={openLifecycleModal} disabled={lifecycleLoading}>
+                      {lifecycleLoading ? "Loading..." : "Manage Lifecycle"}
+                    </button>
+                  </div>
+                </div>
+
+                {lifecycleError && <div className="form-error">{lifecycleError}</div>}
+
+                {lifecycleLoading ? (
+                  <div className="profile-empty">Loading lifecycle information...</div>
+                ) : viewingLifecycle ? (
+                  <div className="profile-detail-grid">
+                    <div><span>Lifecycle status</span><strong>{viewingLifecycle.lifecycle_status}</strong></div>
+                    <div><span>Lifecycle record</span><strong>{viewingLifecycle.has_lifecycle_record ? "Recorded" : "Not recorded"}</strong></div>
+                    <div><span>Exit date</span><strong>{viewingLifecycle.exit_date ? formatDate(viewingLifecycle.exit_date) : "Not recorded"}</strong></div>
+                    <div><span>Exit reason</span><strong>{displayText(viewingLifecycle.exit_reason)}</strong></div>
+                    <div><span>Lifecycle updated</span><strong>{formatDate(viewingLifecycle.updated_at)}</strong></div>
+                    <div><span>Exit notes</span><strong>{displayText(viewingLifecycle.exit_notes)}</strong></div>
+                  </div>
+                ) : (
+                  <div className="profile-empty">Lifecycle information could not be loaded.</div>
+                )}
+              </section>
+
               <div className="profile-section-grid">
 
                 <section className="profile-section">
@@ -3042,6 +3306,66 @@ export default function Home() {
 
           </div>
 
+        </div>
+      )}
+
+
+      {/* ======================================================
+          LIFECYCLE MODAL
+          ====================================================== */}
+
+      {showLifecycleModal && viewingEmployee && (
+        <div className="modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closeLifecycleModal(); }}>
+          <div className="modal lifecycle-modal">
+            <div className="modal-header">
+              <div>
+                <h2>Manage Employee Lifecycle</h2>
+                <p>{displayText(viewingEmployee.full_name, "Employee")} · recorded lifecycle information</p>
+              </div>
+              <button className="close-button" onClick={closeLifecycleModal} aria-label="Close lifecycle form">×</button>
+            </div>
+
+            {lifecycleError && <div className="form-error">{lifecycleError}</div>}
+
+            <form onSubmit={handleLifecycleSave}>
+              <div className="form-grid">
+                <div className="form-field">
+                  <label>Lifecycle status</label>
+                  <select value={lifecycleForm.lifecycle_status} onChange={(e) => setLifecycleForm((current) => ({ ...current, lifecycle_status: e.target.value }))} disabled={lifecycleSaving}>
+                    {LIFECYCLE_STATUSES.map((status) => <option value={status} key={status}>{status}</option>)}
+                  </select>
+                </div>
+
+                <div className="form-field">
+                  <label>Exit date</label>
+                  <input type="date" value={lifecycleForm.exit_date} onChange={(e) => setLifecycleForm((current) => ({ ...current, exit_date: e.target.value }))} disabled={lifecycleSaving || lifecycleForm.lifecycle_status !== "Exited"} />
+                </div>
+
+                <div className="form-field">
+                  <label>Exit reason</label>
+                  <select value={lifecycleForm.exit_reason} onChange={(e) => setLifecycleForm((current) => ({ ...current, exit_reason: e.target.value }))} disabled={lifecycleSaving || lifecycleForm.lifecycle_status !== "Exited"}>
+                    <option value="">Not specified</option>
+                    {EXIT_REASONS.map((reason) => <option value={reason} key={reason}>{reason}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-field full-field">
+                <label>Exit notes</label>
+                <textarea rows={4} value={lifecycleForm.exit_notes} onChange={(e) => setLifecycleForm((current) => ({ ...current, exit_notes: e.target.value }))} placeholder="Optional context about the employee exit" disabled={lifecycleSaving || lifecycleForm.lifecycle_status !== "Exited"} />
+              </div>
+
+              <div className="lifecycle-form-note">
+                <strong>Data rule</strong>
+                <span>Choosing Exited requires an exit date. Saving Exited also marks the employee inactive. Other lifecycle stages keep the employee active.</span>
+              </div>
+
+              <div className="modal-actions">
+                <button type="button" className="cancel-button" onClick={closeLifecycleModal} disabled={lifecycleSaving}>Cancel</button>
+                <button type="submit" className="save-button" disabled={lifecycleSaving}>{lifecycleSaving ? "Saving..." : "Save Lifecycle"}</button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

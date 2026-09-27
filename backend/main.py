@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr
 from sqlalchemy.orm import Session
 
 from database import Base, engine, get_db
-from models import Candidate, Employee
+from models import Candidate, Employee, EmployeeLifecycle
 
 
 # ============================================================
@@ -141,6 +141,44 @@ class CandidateImportResponse(BaseModel):
     failed: int
     errors: list[str] = []
     candidates: list[CandidateResponse] = []
+
+
+class EmployeeLifecycleResponse(BaseModel):
+    employee_id: int
+    employee_name: str
+    lifecycle_status: str
+    exit_date: Optional[date] = None
+    exit_reason: Optional[str] = None
+    exit_notes: Optional[str] = None
+    has_lifecycle_record: bool
+    updated_at: Optional[datetime] = None
+
+
+class EmployeeLifecycleUpdate(BaseModel):
+    lifecycle_status: str = "Active"
+    exit_date: Optional[date] = None
+    exit_reason: Optional[str] = None
+    exit_notes: Optional[str] = None
+
+
+LIFECYCLE_STATUSES = [
+    "Onboarding",
+    "Active",
+    "On Leave",
+    "Offboarding",
+    "Exited",
+]
+
+
+EXIT_REASONS = [
+    "Resignation",
+    "Termination",
+    "Layoff",
+    "Retirement",
+    "Contract End",
+    "Relocation",
+    "Other",
+]
 
 
 # ============================================================
@@ -693,6 +731,238 @@ def delete_employee(
             "Employee deleted successfully"
         ),
         "employee_id": employee_id,
+    }
+
+
+# ============================================================
+# EMPLOYEE LIFECYCLE
+# ============================================================
+
+@app.get("/employees/{employee_id}/lifecycle", response_model=EmployeeLifecycleResponse)
+def get_employee_lifecycle(
+    employee_id: int,
+    db: Session = Depends(get_db),
+):
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    record = (
+        db.query(EmployeeLifecycle)
+        .filter(EmployeeLifecycle.employee_id == employee_id)
+        .first()
+    )
+
+    if record:
+        return EmployeeLifecycleResponse(
+            employee_id=employee.id,
+            employee_name=employee.full_name,
+            lifecycle_status=record.lifecycle_status,
+            exit_date=record.exit_date.date() if isinstance(record.exit_date, datetime) else record.exit_date,
+            exit_reason=record.exit_reason,
+            exit_notes=record.exit_notes,
+            has_lifecycle_record=True,
+            updated_at=record.updated_at,
+        )
+
+    inferred_status = "Active" if employee.is_active else "Exited"
+    return EmployeeLifecycleResponse(
+        employee_id=employee.id,
+        employee_name=employee.full_name,
+        lifecycle_status=inferred_status,
+        has_lifecycle_record=False,
+        updated_at=employee.updated_at,
+    )
+
+
+@app.put("/employees/{employee_id}/lifecycle", response_model=EmployeeLifecycleResponse)
+def update_employee_lifecycle(
+    employee_id: int,
+    lifecycle_data: EmployeeLifecycleUpdate,
+    db: Session = Depends(get_db),
+):
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    status = lifecycle_data.lifecycle_status.strip()
+    if status not in LIFECYCLE_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Lifecycle status must be one of: {', '.join(LIFECYCLE_STATUSES)}",
+        )
+
+    reason = lifecycle_data.exit_reason.strip() if lifecycle_data.exit_reason else None
+    notes = lifecycle_data.exit_notes.strip() if lifecycle_data.exit_notes else None
+    exit_date = lifecycle_data.exit_date
+
+    if status == "Exited":
+        if exit_date is None:
+            raise HTTPException(status_code=400, detail="Exit date is required when lifecycle status is Exited")
+        if exit_date < employee.date_of_joining.date() if isinstance(employee.date_of_joining, datetime) else exit_date < employee.date_of_joining:
+            raise HTTPException(status_code=400, detail="Exit date cannot be before the date of joining")
+        if exit_date > date.today():
+            raise HTTPException(status_code=400, detail="Exit date cannot be in the future")
+    else:
+        exit_date = None
+        reason = None
+        notes = None
+
+    record = (
+        db.query(EmployeeLifecycle)
+        .filter(EmployeeLifecycle.employee_id == employee_id)
+        .first()
+    )
+
+    if not record:
+        record = EmployeeLifecycle(employee_id=employee.id)
+        db.add(record)
+
+    record.lifecycle_status = status
+    record.exit_date = datetime.combine(exit_date, datetime.min.time()) if exit_date else None
+    record.exit_reason = reason
+    record.exit_notes = notes
+
+    if status == "Exited":
+        employee.is_active = False
+        employee.status = "Inactive"
+    else:
+        employee.is_active = True
+        employee.status = "Active"
+
+    db.commit()
+    db.refresh(record)
+
+    return EmployeeLifecycleResponse(
+        employee_id=employee.id,
+        employee_name=employee.full_name,
+        lifecycle_status=record.lifecycle_status,
+        exit_date=exit_date,
+        exit_reason=record.exit_reason,
+        exit_notes=record.exit_notes,
+        has_lifecycle_record=True,
+        updated_at=record.updated_at,
+    )
+
+
+@app.get("/lifecycle/summary")
+def lifecycle_summary(db: Session = Depends(get_db)):
+    employees = db.query(Employee).order_by(Employee.id).all()
+    records = db.query(EmployeeLifecycle).all()
+    record_by_employee = {record.employee_id: record for record in records}
+    today = date.today()
+
+    status_breakdown = {status: 0 for status in LIFECYCLE_STATUSES}
+    status_breakdown["Unrecorded"] = 0
+    exit_reason_breakdown: dict[str, int] = {}
+    monthly_exit_counts: dict[date, int] = {}
+
+    month_starts: list[date] = []
+    anchor = date(today.year, today.month, 1)
+    for offset in range(11, -1, -1):
+        year = anchor.year
+        month = anchor.month - offset
+        while month <= 0:
+            year -= 1
+            month += 12
+        month_starts.append(date(year, month, 1))
+        monthly_exit_counts[date(year, month, 1)] = 0
+
+    recorded_exits = 0
+    recent_exits_90_days = 0
+    unrecorded_inactive = 0
+
+    for employee in employees:
+        record = record_by_employee.get(employee.id)
+        if record:
+            lifecycle_status = record.lifecycle_status if record.lifecycle_status in LIFECYCLE_STATUSES else "Unrecorded"
+            status_breakdown[lifecycle_status] = status_breakdown.get(lifecycle_status, 0) + 1
+            if lifecycle_status == "Exited" and record.exit_date:
+                recorded_exits += 1
+                exit_date = record.exit_date.date() if isinstance(record.exit_date, datetime) else record.exit_date
+                days_ago = (today - exit_date).days
+                if 0 <= days_ago <= 90:
+                    recent_exits_90_days += 1
+                reason = clean_dimension(record.exit_reason)
+                if reason:
+                    exit_reason_breakdown[reason] = exit_reason_breakdown.get(reason, 0) + 1
+                for month_start in month_starts:
+                    next_month = date(month_start.year + 1, 1, 1) if month_start.month == 12 else date(month_start.year, month_start.month + 1, 1)
+                    if month_start <= exit_date < next_month:
+                        monthly_exit_counts[month_start] += 1
+                        break
+        else:
+            if employee.is_active:
+                status_breakdown["Active"] += 1
+            else:
+                status_breakdown["Unrecorded"] += 1
+                unrecorded_inactive += 1
+
+    recent_joiners_90_days = 0
+    for employee in employees:
+        joining_date = employee.date_of_joining.date() if isinstance(employee.date_of_joining, datetime) else employee.date_of_joining
+        if joining_date and 0 <= (today - joining_date).days <= 90:
+            recent_joiners_90_days += 1
+
+    insights: list[dict[str, str]] = []
+    if not employees:
+        insights.append({
+            "type": "info",
+            "title": "Add employees to track lifecycle",
+            "message": "PeopleOS needs employee records before lifecycle analytics can be generated.",
+        })
+    elif recorded_exits == 0:
+        insights.append({
+            "type": "info",
+            "title": "No recorded exits yet",
+            "message": "Record exit dates and reasons when employees leave so PeopleOS can build evidence-based retention analytics.",
+        })
+    else:
+        insights.append({
+            "type": "info",
+            "title": "Recorded exits",
+            "message": f"PeopleOS has {recorded_exits} employee exit record(s) with a recorded exit date.",
+        })
+
+    if recent_joiners_90_days:
+        insights.append({
+            "type": "info",
+            "title": "Recent joiners",
+            "message": f"{recent_joiners_90_days} employee(s) joined in the last 90 days based on recorded joining dates.",
+        })
+
+    if unrecorded_inactive:
+        insights.append({
+            "type": "attention",
+            "title": "Inactive records need lifecycle data",
+            "message": f"{unrecorded_inactive} inactive employee record(s) do not have a lifecycle record. Add exit details where applicable.",
+        })
+
+    top_reason = max(exit_reason_breakdown, key=exit_reason_breakdown.get) if exit_reason_breakdown else None
+    if top_reason:
+        insights.append({
+            "type": "info",
+            "title": "Most recorded exit reason",
+            "message": f"{top_reason} accounts for {exit_reason_breakdown[top_reason]} recorded exit(s).",
+        })
+
+    monthly_exits = [
+        {"month": month_start.isoformat(), "label": month_start.strftime("%b %Y"), "count": monthly_exit_counts[month_start]}
+        for month_start in month_starts
+    ]
+
+    return {
+        "total_employees": len(employees),
+        "recorded_lifecycle_records": len(records),
+        "recorded_exits": recorded_exits,
+        "recent_exits_90_days": recent_exits_90_days,
+        "recent_joiners_90_days": recent_joiners_90_days,
+        "status_breakdown": status_breakdown,
+        "exit_reason_breakdown": dict(sorted(exit_reason_breakdown.items(), key=lambda item: item[1], reverse=True)),
+        "monthly_exits": monthly_exits,
+        "unrecorded_inactive": unrecorded_inactive,
+        "insights": insights,
+        "attrition_note": "PeopleOS does not calculate a historical attrition rate yet because it does not store workforce snapshots or full historical headcount records. Record exits now to build the data foundation for future retention analytics.",
     }
 
 
@@ -1346,5 +1616,6 @@ def get_analytics_summary(
         "data_quality": missing_fields,
         "insights": insights,
         "recruitment": recruitment_summary(db),
+        "lifecycle": lifecycle_summary(db),
     }
 
