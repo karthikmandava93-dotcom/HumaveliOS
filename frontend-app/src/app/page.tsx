@@ -332,7 +332,7 @@ const PLACEHOLDER_TEXTS = new Set([
   "n/a",
   "na",
   "-",
-  "â€”",
+  "—",
 ]);
 
 function displayText(
@@ -577,11 +577,11 @@ function downloadCandidateTemplate() {
 
 const NAV_ITEMS = [
   { id: "overview", label: "Overview", icon: "âŒ‚", description: "Workforce health at a glance" },
-  { id: "employees", label: "Employees", icon: "ðŸ‘¥", description: "Employee records and Employee 360" },
+  { id: "employees", label: "Employees", icon: "👥", description: "Employee records and Employee 360" },
   { id: "analytics", label: "People Analytics", icon: "â—”", description: "Workforce, trends and performance" },
   { id: "recruitment", label: "Recruitment", icon: "â†—", description: "Candidates, pipeline and funnel" },
-  { id: "lifecycle", label: "Lifecycle", icon: "â†»", description: "Lifecycle, retention and exits" },
-  { id: "users", label: "Users & Roles", icon: "âš™", description: "Manage accounts and access levels" },
+  { id: "lifecycle", label: "Lifecycle", icon: "↻", description: "Lifecycle, retention and exits" },
+  { id: "users", label: "Users & Roles", icon: "⚙", description: "Manage accounts and access levels" },
 ] as const;
 
 type ViewId = (typeof NAV_ITEMS)[number]["id"];
@@ -845,7 +845,7 @@ export default function Home() {
       }
     } catch (err) {
       console.error("HumaveliOS API error:", err);
-      setError(err instanceof Error ? `${err.message} â€” API: ${API_URL}` : `Unable to connect to HumaveliOS API â€” API: ${API_URL}`);
+      setError(err instanceof Error ? `${err.message} — API: ${API_URL}` : `Unable to connect to HumaveliOS API — API: ${API_URL}`);
     } finally {
       setLoading(false);
     }
@@ -2052,7 +2052,7 @@ export default function Home() {
                 </span>
 
                 <div className="stat-icon blue">
-                  ðŸ‘¥
+                  👥
                 </div>
 
               </div>
@@ -2079,7 +2079,7 @@ export default function Home() {
                 </span>
 
                 <div className="stat-icon green">
-                  âœ“
+                  ✓
                 </div>
 
               </div>
@@ -2131,14 +2131,14 @@ export default function Home() {
                 </span>
 
                 <div className="stat-icon purple">
-                  â—·
+                  ◷
                 </div>
 
               </div>
 
               <strong>
                 {analytics.average_tenure_months === null
-                  ? "â€”"
+                  ? "—"
                   : `${analytics.average_tenure_months} mo`}
               </strong>
 
@@ -2192,7 +2192,7 @@ export default function Home() {
 
               <div className="coverage-value">
                 <strong>{analytics.performance_coverage}%</strong>
-                <span>{analytics.performance_scored_count} of {analytics.total_employees} employees scored{analytics.average_performance_score === null ? "" : ` Â· Average score ${analytics.average_performance_score}`}</span>
+                <span>{analytics.performance_scored_count} of {analytics.total_employees} employees scored{analytics.average_performance_score === null ? "" : ` · Average score ${analytics.average_performance_score}`}</span>
               </div>
               <div className="status-progress">
                 <div className="status-progress-active" style={{ width: `${analytics.performance_coverage}%` }} />
@@ -2215,7 +2215,7 @@ export default function Home() {
                     {Object.entries(analytics.data_quality)
                       .filter(([, count]) => count > 0)
                       .map(([field, count]) => (
-                        <span key={field}>{field.replace(/_/g, " ")} Â· {count}</span>
+                        <span key={field}>{field.replace(/_/g, " ")} · {count}</span>
                       ))}
                   </div>
                 </div>
@@ -2781,7 +2781,7 @@ export default function Home() {
               <div className="lifecycle-kpi-grid">
                 <div className="recruitment-kpi"><span>Recorded Exits</span><strong>{analytics.lifecycle.recorded_exits}</strong><small>Exit dates recorded</small></div>
                 <div className="recruitment-kpi"><span>Recent Exits</span><strong>{analytics.lifecycle.recent_exits_90_days}</strong><small>Last 90 days</small></div>
-                <div className="recruitment-kpi"><span>Avg. Tenure at Exit</span><strong>{analytics.lifecycle.average_tenure_at_exit_months === null ? "â€”" : `${analytics.lifecycle.average_tenure_at_exit_months} mo`}</strong><small>Based on recorded exits</small></div>
+                <div className="recruitment-kpi"><span>Avg. Tenure at Exit</span><strong>{analytics.lifecycle.average_tenure_at_exit_months === null ? "—" : `${analytics.lifecycle.average_tenure_at_exit_months} mo`}</strong><small>Based on recorded exits</small></div>
                 <div className="recruitment-kpi"><span>Exit Reason Coverage</span><strong>{analytics.lifecycle.exit_reason_coverage}%</strong><small>Exits with a reason</small></div>
               </div>
 
@@ -2883,7 +2883,7 @@ export default function Home() {
                 <div className="recruitment-kpi"><span>Total Candidates</span><strong>{analytics.recruitment.total_candidates}</strong><small>Recorded applicants</small></div>
                 <div className="recruitment-kpi"><span>Open Pipeline</span><strong>{analytics.recruitment.open_pipeline}</strong><small>Applied to offer</small></div>
                 <div className="recruitment-kpi"><span>Hired</span><strong>{analytics.recruitment.hired_candidates}</strong><small>Recorded hires</small></div>
-                <div className="recruitment-kpi"><span>Avg. Time to Hire</span><strong>{analytics.recruitment.average_time_to_hire_days === null ? "â€”" : `${analytics.recruitment.average_time_to_hire_days} d`}</strong><small>Hired candidates with dates</small></div>
+                <div className="recruitment-kpi"><span>Avg. Time to Hire</span><strong>{analytics.recruitment.average_time_to_hire_days === null ? "—" : `${analytics.recruitment.average_time_to_hire_days} d`}</strong><small>Hired candidates with dates</small></div>
                 <div className="recruitment-kpi"><span>Hire Conversion</span><strong>{analytics.recruitment.hire_conversion_rate}%</strong><small>Hires / recorded candidates</small></div>
               </div>
 
@@ -2946,7 +2946,7 @@ export default function Home() {
                       {Object.entries(analytics.recruitment.funnel_intelligence.stage_conversion).map(([transition, rate]) => (
                         <div className="conversion-item" key={transition}>
                           <span>{transition}</span>
-                          <strong>{rate === null ? "â€”" : `${rate}%`}</strong>
+                          <strong>{rate === null ? "—" : `${rate}%`}</strong>
                         </div>
                       ))}
                     </div>
@@ -2961,7 +2961,7 @@ export default function Home() {
                           {analytics.recruitment.funnel_intelligence.largest_drop.from_stage} â†’ {analytics.recruitment.funnel_intelligence.largest_drop.to_stage}
                         </span>
                         <small>
-                          {analytics.recruitment.funnel_intelligence.largest_drop.drop_count} candidate(s) Â· {analytics.recruitment.funnel_intelligence.largest_drop.drop_rate}% drop
+                          {analytics.recruitment.funnel_intelligence.largest_drop.drop_count} candidate(s) · {analytics.recruitment.funnel_intelligence.largest_drop.drop_rate}% drop
                         </small>
                       </div>
                     ) : (
@@ -3020,7 +3020,7 @@ export default function Home() {
                   <tbody>
                     {candidates.length ? candidates.map((candidate) => (
                       <tr key={candidate.id}>
-                        <td><div className="employee-cell"><div className="avatar">{displayText(candidate.full_name, "?").charAt(0).toUpperCase()}</div><div><div className="employee-name">{displayText(candidate.full_name, "Unnamed candidate")}</div><div className="employee-meta">{displayText(candidate.candidate_id, "No ID")} Â· {displayText(candidate.email, "No email")}</div></div></div></td>
+                        <td><div className="employee-cell"><div className="avatar">{displayText(candidate.full_name, "?").charAt(0).toUpperCase()}</div><div><div className="employee-name">{displayText(candidate.full_name, "Unnamed candidate")}</div><div className="employee-meta">{displayText(candidate.candidate_id, "No ID")} · {displayText(candidate.email, "No email")}</div></div></div></td>
                         <td>{displayText(candidate.role)}</td><td>{displayText(candidate.department)}</td><td>{displayText(candidate.source)}</td>
                         <td><span className={`candidate-stage stage-${candidate.stage.toLowerCase().replace(/[^a-z]+/g, "-")}`}>{candidate.stage}</span></td>
                         <td>{formatDate(candidate.applied_date)}</td>
@@ -3045,11 +3045,11 @@ export default function Home() {
             </div>
             <div className="users-table-wrap">
               <table className="users-table"><thead><tr><th>Email</th><th>Role</th><th>Employee Profile</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody>
-                {users.map((user) => <tr key={user.id}><td><strong>{user.email}</strong></td><td><select value={user.role} disabled={user.email === authUser?.email} onChange={(event) => updateUser(user, { role: event.target.value })}>{USER_ROLES.map((role) => <option key={role} value={role}>{role}</option>)}</select></td><td><select className="user-employee-select" value={user.employee_id ?? ""} disabled={user.role !== "employee" || user.email === authUser?.email} onChange={(event) => linkUserEmployee(user, event.target.value)}><option value="">Not linked</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.full_name} Â· {employee.employee_id}</option>)}</select></td><td><span className={`status-pill ${user.is_active ? "active" : "inactive"}`}>{user.is_active ? "Active" : "Inactive"}</span></td><td>{new Date(user.created_at).toLocaleDateString()}</td><td><div className="row-actions"><button type="button" className="table-action-button" disabled={user.email === authUser?.email || userDeletingId === user.id} onClick={() => updateUser(user, { is_active: !user.is_active })}>{user.is_active ? "Deactivate" : "Activate"}</button><button type="button" className="delete-button" disabled={user.email === authUser?.email || userDeletingId === user.id} onClick={() => deleteUser(user)}>{userDeletingId === user.id ? "Deleting..." : "Delete"}</button></div></td></tr>)}
+                {users.map((user) => <tr key={user.id}><td><strong>{user.email}</strong></td><td><select value={user.role} disabled={user.email === authUser?.email} onChange={(event) => updateUser(user, { role: event.target.value })}>{USER_ROLES.map((role) => <option key={role} value={role}>{role}</option>)}</select></td><td><select className="user-employee-select" value={user.employee_id ?? ""} disabled={user.role !== "employee" || user.email === authUser?.email} onChange={(event) => linkUserEmployee(user, event.target.value)}><option value="">Not linked</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.full_name} · {employee.employee_id}</option>)}</select></td><td><span className={`status-pill ${user.is_active ? "active" : "inactive"}`}>{user.is_active ? "Active" : "Inactive"}</span></td><td>{new Date(user.created_at).toLocaleDateString()}</td><td><div className="row-actions"><button type="button" className="table-action-button" disabled={user.email === authUser?.email || userDeletingId === user.id} onClick={() => updateUser(user, { is_active: !user.is_active })}>{user.is_active ? "Deactivate" : "Activate"}</button><button type="button" className="delete-button" disabled={user.email === authUser?.email || userDeletingId === user.id} onClick={() => deleteUser(user)}>{userDeletingId === user.id ? "Deleting..." : "Delete"}</button></div></td></tr>)}
                 {users.length === 0 && <tr><td colSpan={6}><div className="empty-chart">No users available.</div></td></tr>}
               </tbody></table>
             </div>
-            <div className="role-permission-note"><strong>Access model</strong><span><b>Admin</b>: full access + user management Â· <b>HR</b>: employees, analytics, recruitment and lifecycle Â· <b>Manager</b>: overview, employees and people analytics Â· <b>Employee</b>: personal profile only.</span></div>
+            <div className="role-permission-note"><strong>Access model</strong><span><b>Admin</b>: full access + user management · <b>HR</b>: employees, analytics, recruitment and lifecycle · <b>Manager</b>: overview, employees and people analytics · <b>Employee</b>: personal profile only.</span></div>
           </section>
 
           <section className={`panel employee-panel view-section ${activeView === "employees" ? "view-section-active" : "view-section-hidden"}`}>
@@ -3275,7 +3275,7 @@ export default function Home() {
                                     {
                                       displayText(employee.employee_id, "No ID")
                                     }{" "}
-                                    Â·{" "}
+                                    ·{" "}
                                     {
                                       displayText(employee.email, "No email")
                                     }
@@ -3437,7 +3437,7 @@ export default function Home() {
             <form className="form-grid" onSubmit={saveUser}>
               <div className="form-field"><label>Email</label><input type="email" required value={userForm.email} onChange={(event) => setUserForm((current) => ({ ...current, email: event.target.value }))} /></div>
               <div className="form-field"><label>Role</label><select value={userForm.role} onChange={(event) => setUserForm((current) => ({ ...current, role: event.target.value, employee_id: event.target.value === "employee" ? current.employee_id : "" }))}>{USER_ROLES.map((role) => <option key={role} value={role}>{role}</option>)}</select></div>
-              {userForm.role === "employee" && <div className="form-field"><label>Link employee profile</label><select value={userForm.employee_id} onChange={(event) => setUserForm((current) => ({ ...current, employee_id: event.target.value }))}><option value="">No profile linked yet</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.full_name} Â· {employee.employee_id}</option>)}</select></div>}
+              {userForm.role === "employee" && <div className="form-field"><label>Link employee profile</label><select value={userForm.employee_id} onChange={(event) => setUserForm((current) => ({ ...current, employee_id: event.target.value }))}><option value="">No profile linked yet</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.full_name} · {employee.employee_id}</option>)}</select></div>}
               <div className="form-field full-field"><label>Temporary password</label><input type="password" required minLength={8} value={userForm.password} onChange={(event) => setUserForm((current) => ({ ...current, password: event.target.value }))} placeholder="At least 8 characters" /></div>
               {userError && <div className="form-error full-field">{userError}</div>}
               <div className="modal-actions field-wide"><button type="button" className="cancel-button" onClick={() => setShowUserModal(false)} disabled={userSaving}>Cancel</button><button type="submit" className="save-button" disabled={userSaving}>{userSaving ? "Creating..." : "Create User"}</button></div>
@@ -3583,7 +3583,7 @@ export default function Home() {
                 <div className="profile-hero-copy">
                   <h3>{displayText(viewingEmployee.full_name, "Unnamed employee")}</h3>
                   <p>
-                    {displayText(viewingEmployee.designation, "Role not provided")} Â· {displayText(viewingEmployee.department, "Department not provided")}
+                    {displayText(viewingEmployee.designation, "Role not provided")} · {displayText(viewingEmployee.department, "Department not provided")}
                   </p>
                   <div className="profile-meta-row">
                     <span>{displayText(viewingEmployee.employee_id, "No ID")}</span>
@@ -3720,7 +3720,7 @@ export default function Home() {
             <div className="modal-header">
               <div>
                 <h2>Manage Employee Lifecycle</h2>
-                <p>{displayText(viewingEmployee.full_name, "Employee")} Â· recorded lifecycle information</p>
+                <p>{displayText(viewingEmployee.full_name, "Employee")} · recorded lifecycle information</p>
               </div>
               <button className="close-button" onClick={closeLifecycleModal} aria-label="Close lifecycle form">Ã—</button>
             </div>
