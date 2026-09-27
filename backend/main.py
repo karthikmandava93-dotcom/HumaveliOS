@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr
 from sqlalchemy.orm import Session
 
 from database import Base, SessionLocal, engine, get_db
-from models import Candidate, Employee, EmployeeLifecycle, User
+from models import Candidate, Employee, EmployeeLifecycle, User, UserEmployeeLink
 
 
 # ============================================================
@@ -65,6 +65,7 @@ class UserCreateRequest(BaseModel):
     email: EmailStr
     password: str
     role: str = "employee"
+    employee_id: Optional[int] = None
 
 
 class UserUpdateRequest(BaseModel):
@@ -78,8 +79,14 @@ class UserResponse(BaseModel):
     email: EmailStr
     role: str
     is_active: bool
+    employee_id: Optional[int] = None
+    employee_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+
+class UserEmployeeLinkRequest(BaseModel):
+    employee_id: Optional[int] = None
 
 
 
@@ -441,10 +448,40 @@ def ensure_admin_request(request: Request) -> None:
         raise HTTPException(status_code=403, detail="Administrator access required")
 
 
+def build_user_response(user: User, db: Session) -> dict:
+    link = db.query(UserEmployeeLink).filter(UserEmployeeLink.user_id == user.id).first()
+    employee = None
+    if link:
+        employee = db.query(Employee).filter(Employee.id == link.employee_id).first()
+    return {
+        "id": user.id,
+        "email": user.email,
+        "role": user.role,
+        "is_active": user.is_active,
+        "employee_id": employee.id if employee else None,
+        "employee_name": employee.full_name if employee else None,
+        "created_at": user.created_at,
+        "updated_at": user.updated_at,
+    }
+
+
+def ensure_employee_link_available(employee_id: int, db: Session, *, exclude_user_id: int | None = None) -> Employee:
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee profile not found")
+    query = db.query(UserEmployeeLink).filter(UserEmployeeLink.employee_id == employee_id)
+    if exclude_user_id is not None:
+        query = query.filter(UserEmployeeLink.user_id != exclude_user_id)
+    if query.first():
+        raise HTTPException(status_code=409, detail="This employee profile is already linked to another user")
+    return employee
+
+
 @app.get("/users", response_model=list[UserResponse])
 def list_users(request: Request, db: Session = Depends(get_db)):
     ensure_admin_request(request)
-    return db.query(User).order_by(User.created_at.asc()).all()
+    users = db.query(User).order_by(User.created_at.asc()).all()
+    return [build_user_response(user, db) for user in users]
 
 
 @app.post("/users", response_model=UserResponse, status_code=201)
@@ -460,6 +497,12 @@ def create_user(user_data: UserCreateRequest, request: Request, db: Session = De
     if db.query(User).filter(User.email == email).first():
         raise HTTPException(status_code=409, detail="A user with this email already exists")
 
+    employee = None
+    if user_data.employee_id is not None:
+        if role != "employee":
+            raise HTTPException(status_code=400, detail="Employee profile linking is available only for Employee accounts")
+        employee = ensure_employee_link_available(user_data.employee_id, db)
+
     salt = secrets.token_bytes(16)
     user = User(
         email=email,
@@ -469,9 +512,12 @@ def create_user(user_data: UserCreateRequest, request: Request, db: Session = De
         is_active=True,
     )
     db.add(user)
+    db.flush()
+    if employee is not None:
+        db.add(UserEmployeeLink(user_id=user.id, employee_id=employee.id))
     db.commit()
     db.refresh(user)
-    return user
+    return build_user_response(user, db)
 
 
 @app.put("/users/{user_id}", response_model=UserResponse)
@@ -496,6 +542,10 @@ def update_user(user_id: int, user_data: UserUpdateRequest, request: Request, db
             if active_admins == 0:
                 raise HTTPException(status_code=400, detail="At least one active administrator must remain")
         user.role = role
+        if role != "employee":
+            existing_link = db.query(UserEmployeeLink).filter(UserEmployeeLink.user_id == user.id).first()
+            if existing_link:
+                db.delete(existing_link)
 
     if user_data.password is not None:
         if len(user_data.password) < 8:
@@ -513,11 +563,49 @@ def update_user(user_id: int, user_data: UserUpdateRequest, request: Request, db
 
     db.commit()
     db.refresh(user)
-    return user
+    return build_user_response(user, db)
+
+
+@app.put("/users/{user_id}/employee", response_model=UserResponse)
+def link_employee_to_user(
+    user_id: int,
+    link_data: UserEmployeeLinkRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    ensure_admin_request(request)
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.role != "employee":
+        raise HTTPException(status_code=400, detail="Only Employee accounts can be linked to an employee profile")
+
+    existing = db.query(UserEmployeeLink).filter(UserEmployeeLink.user_id == user.id).first()
+    if link_data.employee_id is None:
+        if existing:
+            db.delete(existing)
+            db.commit()
+        return build_user_response(user, db)
+
+    employee = ensure_employee_link_available(link_data.employee_id, db, exclude_user_id=user.id)
+    if existing:
+        existing.employee_id = employee.id
+    else:
+        db.add(UserEmployeeLink(user_id=user.id, employee_id=employee.id))
+    db.commit()
+    db.refresh(user)
+    return build_user_response(user, db)
 
 
 @app.get("/employees/me", response_model=EmployeeResponse)
 def get_my_employee_profile(request: Request, db: Session = Depends(get_db)):
+    user_id = int(request.state.user["sub"])
+    link = db.query(UserEmployeeLink).filter(UserEmployeeLink.user_id == user_id).first()
+    if link:
+        employee = db.query(Employee).filter(Employee.id == link.employee_id).first()
+        if employee:
+            return employee
+
     email = str(request.state.user.get("email", "")).strip().lower()
     employee = db.query(Employee).filter(Employee.email == email).first()
     if not employee:

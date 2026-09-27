@@ -23,41 +23,21 @@ class Employee(Base):
     performance_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     skills: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
-    )
-
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class EmployeeLifecycle(Base):
     __tablename__ = "employee_lifecycle"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    employee_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("employees.id"),
-        unique=True,
-        index=True,
-    )
+    employee_id: Mapped[int] = mapped_column(Integer, ForeignKey("employees.id"), unique=True, index=True)
     lifecycle_status: Mapped[str] = mapped_column(String(50), default="Active")
     exit_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     exit_reason: Mapped[str | None] = mapped_column(String(150), nullable=True)
     exit_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class Candidate(Base):
@@ -80,6 +60,7 @@ class Candidate(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
 class User(Base):
     __tablename__ = "users"
 
@@ -92,3 +73,12 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
+class UserEmployeeLink(Base):
+    __tablename__ = "user_employee_links"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), unique=True, index=True)
+    employee_id: Mapped[int] = mapped_column(Integer, ForeignKey("employees.id"), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

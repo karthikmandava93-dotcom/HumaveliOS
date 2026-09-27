@@ -2326,3 +2326,6 @@ td {
 .self-profile-wide { grid-column:1 / -1; }
 @media(max-width:900px){ .role-summary-grid,.self-profile-grid{grid-template-columns:1fr 1fr;} }
 @media(max-width:640px){ .role-summary-grid,.self-profile-grid{grid-template-columns:1fr;} .self-profile-wide{grid-column:auto;} .employee-self-layout{padding:16px;} .self-card{padding:20px;} }
+
+
+.user-employee-select { min-width: 190px; }
