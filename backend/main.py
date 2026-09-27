@@ -1,13 +1,21 @@
 from datetime import date, datetime
 from typing import Optional
+import base64
+import hashlib
+import hmac
+import json
+import os
+import secrets
+import time
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, EmailStr
 from sqlalchemy.orm import Session
 
-from database import Base, engine, get_db
-from models import Candidate, Employee, EmployeeLifecycle
+from database import Base, SessionLocal, engine, get_db
+from models import Candidate, Employee, EmployeeLifecycle, User
 
 
 # ============================================================
@@ -19,6 +27,138 @@ app = FastAPI(
     description="People Analytics and HR Operations Platform",
     version="1.0.0",
 )
+
+
+# ============================================================
+# AUTHENTICATION
+# ============================================================
+
+AUTH_TOKEN_TTL_SECONDS = int(os.getenv("PEOPLEOS_SESSION_TTL_SECONDS", "28800"))
+AUTH_SECRET = os.getenv("PEOPLEOS_JWT_SECRET") or secrets.token_urlsafe(32)
+AUTH_PUBLIC_PATHS = {
+    "/",
+    "/health",
+    "/auth/login",
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+}
+PBKDF2_ITERATIONS = 310_000
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    user: dict
+
+
+def hash_password(password: str, salt: bytes) -> str:
+    derived = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        PBKDF2_ITERATIONS,
+        dklen=32,
+    )
+    return base64.urlsafe_b64encode(derived).decode("ascii")
+
+
+def verify_password(password: str, stored_hash: str, stored_salt: str) -> bool:
+    try:
+        salt = base64.urlsafe_b64decode(stored_salt.encode("ascii"))
+    except Exception:
+        return False
+    candidate = hash_password(password, salt)
+    return hmac.compare_digest(candidate, stored_hash)
+
+
+def encode_token(user: User) -> str:
+    payload = {
+        "sub": str(user.id),
+        "email": user.email,
+        "role": user.role,
+        "exp": int(time.time()) + AUTH_TOKEN_TTL_SECONDS,
+    }
+    payload_part = base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    ).decode("ascii").rstrip("=")
+    signature = hmac.new(
+        AUTH_SECRET.encode("utf-8"),
+        payload_part.encode("ascii"),
+        hashlib.sha256,
+    ).digest()
+    signature_part = base64.urlsafe_b64encode(signature).decode("ascii").rstrip("=")
+    return f"{payload_part}.{signature_part}"
+
+
+def decode_token(token: str) -> dict:
+    parts = token.split(".")
+    if len(parts) != 2:
+        raise ValueError("Invalid authentication token")
+
+    payload_part, signature_part = parts
+    expected_signature = hmac.new(
+        AUTH_SECRET.encode("utf-8"),
+        payload_part.encode("ascii"),
+        hashlib.sha256,
+    ).digest()
+    expected_part = base64.urlsafe_b64encode(expected_signature).decode("ascii").rstrip("=")
+    if not hmac.compare_digest(signature_part, expected_part):
+        raise ValueError("Invalid authentication token")
+
+    padded = payload_part + "=" * (-len(payload_part) % 4)
+    payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+    if int(payload.get("exp", 0)) <= int(time.time()):
+        raise ValueError("Authentication token expired")
+    return payload
+
+
+def ensure_admin_user() -> None:
+    admin_email = os.getenv("PEOPLEOS_ADMIN_EMAIL", "").strip().lower()
+    admin_password = os.getenv("PEOPLEOS_ADMIN_PASSWORD", "")
+    if not admin_email or not admin_password:
+        return
+
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.email == admin_email).first()
+        if user:
+            return
+        salt = secrets.token_bytes(16)
+        user = User(
+            email=admin_email,
+            password_salt=base64.urlsafe_b64encode(salt).decode("ascii"),
+            password_hash=hash_password(admin_password, salt),
+            role="admin",
+            is_active=True,
+        )
+        db.add(user)
+        db.commit()
+
+
+# Protect API routes by default. Authentication endpoints and API docs remain public.
+@app.middleware("http")
+async def authentication_middleware(request, call_next):
+    path = request.url.path
+    if request.method == "OPTIONS" or path in AUTH_PUBLIC_PATHS or path.startswith("/docs/") or path.startswith("/redoc/"):
+        return await call_next(request)
+
+    authorization = request.headers.get("Authorization", "")
+    if not authorization.lower().startswith("bearer "):
+        return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+
+    token = authorization.split(" ", 1)[1].strip()
+    try:
+        request.state.user = decode_token(token)
+    except Exception:
+        return JSONResponse(status_code=401, content={"detail": "Invalid or expired authentication token"})
+
+    return await call_next(request)
 
 
 # ============================================================
@@ -206,6 +346,31 @@ def clean_dimension(value: Optional[str]) -> Optional[str]:
         return None
 
     return cleaned
+
+
+# ============================================================
+# AUTH LOGIN
+# ============================================================
+
+@app.post("/auth/login", response_model=LoginResponse)
+def login(login_data: LoginRequest, db: Session = Depends(get_db)):
+    email = str(login_data.email).strip().lower()
+    user = db.query(User).filter(User.email == email).first()
+
+    if not user or not user.is_active or not verify_password(login_data.password, user.password_hash, user.password_salt):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    token = encode_token(user)
+    return LoginResponse(
+        access_token=token,
+        expires_in=AUTH_TOKEN_TTL_SECONDS,
+        user={"id": user.id, "email": user.email, "role": user.role},
+    )
+
+
+@app.get("/auth/me")
+def auth_me(request: Request):
+    return request.state.user
 
 
 # ============================================================

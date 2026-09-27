@@ -13,6 +13,9 @@ import {
    API URL
    ============================================================ */
 
+const AUTH_TOKEN_KEY = "peopleos_access_token";
+const AUTH_USER_KEY = "peopleos_auth_user";
+
 const API_URL = (
   process.env.NEXT_PUBLIC_API_URL ||
   (
@@ -346,6 +349,9 @@ async function apiRequest<T>(
 
       headers: {
         Accept: "application/json",
+        ...(typeof window !== "undefined" && localStorage.getItem(AUTH_TOKEN_KEY)
+          ? { Authorization: `Bearer ${localStorage.getItem(AUTH_TOKEN_KEY)}` }
+          : {}),
         ...(options?.headers || {}),
       },
     }
@@ -359,6 +365,14 @@ async function apiRequest<T>(
     data = await response.json();
   } catch {
     data = null;
+  }
+
+
+  if (response.status === 401 && typeof window !== "undefined") {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_USER_KEY);
+    window.location.href = "/login";
+    throw new Error("Your session has expired. Please sign in again.");
   }
 
 
@@ -539,6 +553,18 @@ function downloadCandidateTemplate() {
    ============================================================ */
 
 export default function Home() {
+
+  const [
+    authReady,
+    setAuthReady,
+  ] = useState(false);
+
+
+  const [
+    authUser,
+    setAuthUser,
+  ] = useState<{ email: string; role: string } | null>(null);
+
 
   const [
     employees,
@@ -794,6 +820,25 @@ export default function Home() {
      ========================================================== */
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const token = localStorage.getItem(AUTH_TOKEN_KEY);
+    const storedUser = localStorage.getItem(AUTH_USER_KEY);
+
+    if (!token) {
+      window.location.replace("/login");
+      return;
+    }
+
+    if (storedUser) {
+      try {
+        setAuthUser(JSON.parse(storedUser));
+      } catch {
+        localStorage.removeItem(AUTH_USER_KEY);
+      }
+    }
+
+    setAuthReady(true);
     loadDashboard();
   }, []);
 
@@ -906,6 +951,13 @@ export default function Home() {
         [field]: value,
       })
     );
+  }
+
+
+  function handleLogout() {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_USER_KEY);
+    window.location.href = "/login";
   }
 
 
@@ -1662,6 +1714,15 @@ export default function Home() {
      LOADING
      ========================================================== */
 
+  if (!authReady) {
+    return (
+      <main className="dashboard">
+        <div className="message-card">Checking your PeopleOS session...</div>
+      </main>
+    );
+  }
+
+
   if (
     loading &&
     !analytics
@@ -1714,19 +1775,24 @@ export default function Home() {
         </div>
 
 
-        <button
-          className="refresh-button"
-          onClick={
-            loadDashboard
-          }
-          disabled={
-            loading
-          }
-        >
-          {loading
-            ? "Loading..."
-            : "Refresh Data"}
-        </button>
+        <div className="header-actions">
+          {authUser && (
+            <span className="auth-user">{authUser.email}</span>
+          )}
+          <button
+            className="refresh-button"
+            onClick={loadDashboard}
+            disabled={loading}
+          >
+            {loading ? "Loading..." : "Refresh Data"}
+          </button>
+          <button
+            className="logout-button"
+            onClick={handleLogout}
+          >
+            Logout
+          </button>
+        </div>
 
       </header>
 

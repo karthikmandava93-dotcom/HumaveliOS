@@ -1945,3 +1945,160 @@ td {
 .retention-section {
   margin-bottom: 22px;
 }
+
+
+/* ==========================================================
+   AUTHENTICATION
+   ========================================================== */
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  background: #f5f7fb;
+}
+
+.login-card {
+  width: min(430px, 100%);
+  padding: 34px;
+  border: 1px solid #e5e9f0;
+  border-radius: 16px;
+  background: white;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+}
+
+.login-brand {
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  border-radius: 13px;
+  background: #2563eb;
+  color: white;
+  font-size: 23px;
+  font-weight: 800;
+}
+
+.login-heading h1 {
+  margin: 0;
+  color: #172033;
+  font-size: 25px;
+}
+
+.login-heading p {
+  margin: 7px 0 0;
+  color: #7a8494;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.login-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 25px;
+}
+
+.login-form label {
+  display: grid;
+  gap: 7px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.login-form input {
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid #dce3ec;
+  border-radius: 8px;
+  outline: 0;
+  background: white;
+  color: #334155;
+  font-size: 13px;
+}
+
+.login-form input:focus {
+  border-color: #93c5fd;
+}
+
+.login-button {
+  height: 44px;
+  margin-top: 4px;
+  border: 0;
+  border-radius: 8px;
+  background: #2563eb;
+  color: white;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.login-button:hover {
+  background: #1d4ed8;
+}
+
+.login-button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.login-error {
+  margin-top: 18px;
+  padding: 11px 13px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 12px;
+}
+
+.login-note {
+  margin: 18px 0 0;
+  color: #97a0ae;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.auth-user {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.logout-button {
+  border: 1px solid #dbe3ef;
+  border-radius: 9px;
+  padding: 11px 15px;
+  background: white;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.logout-button:hover {
+  background: #f8fafc;
+}
+
+@media (max-width: 760px) {
+  .login-page {
+    padding: 18px;
+  }
+
+  .login-card {
+    padding: 26px;
+  }
+
+  .auth-user {
+    max-width: 180px;
+  }
+}
