@@ -1937,3 +1937,11 @@ td {
     flex-direction: column;
   }
 }
+
+/* ==========================================================
+   RETENTION & EXIT ANALYTICS
+   ========================================================== */
+
+.retention-section {
+  margin-bottom: 22px;
+}

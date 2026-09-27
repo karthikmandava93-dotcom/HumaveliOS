@@ -871,6 +871,10 @@ def lifecycle_summary(db: Session = Depends(get_db)):
     recorded_exits = 0
     recent_exits_90_days = 0
     unrecorded_inactive = 0
+    exit_tenures_months: list[int] = []
+    exit_reason_missing_count = 0
+    exit_department_breakdown: dict[str, int] = {}
+    exit_location_breakdown: dict[str, int] = {}
 
     for employee in employees:
         record = record_by_employee.get(employee.id)
@@ -883,9 +887,27 @@ def lifecycle_summary(db: Session = Depends(get_db)):
                 days_ago = (today - exit_date).days
                 if 0 <= days_ago <= 90:
                     recent_exits_90_days += 1
+                joining_date = employee.date_of_joining.date() if isinstance(employee.date_of_joining, datetime) else employee.date_of_joining
+                tenure_months = (exit_date.year - joining_date.year) * 12 + (exit_date.month - joining_date.month)
+                if exit_date.day < joining_date.day:
+                    tenure_months -= 1
+                if tenure_months >= 0:
+                    exit_tenures_months.append(tenure_months)
+
                 reason = clean_dimension(record.exit_reason)
                 if reason:
                     exit_reason_breakdown[reason] = exit_reason_breakdown.get(reason, 0) + 1
+                else:
+                    exit_reason_missing_count += 1
+
+                department = clean_dimension(employee.department)
+                if department:
+                    exit_department_breakdown[department] = exit_department_breakdown.get(department, 0) + 1
+
+                location = clean_dimension(employee.location)
+                if location:
+                    exit_location_breakdown[location] = exit_location_breakdown.get(location, 0) + 1
+
                 for month_start in month_starts:
                     next_month = date(month_start.year + 1, 1, 1) if month_start.month == 12 else date(month_start.year, month_start.month + 1, 1)
                     if month_start <= exit_date < next_month:
@@ -951,6 +973,50 @@ def lifecycle_summary(db: Session = Depends(get_db)):
         for month_start in month_starts
     ]
 
+    average_tenure_at_exit_months = (
+        round(sum(exit_tenures_months) / len(exit_tenures_months), 1)
+        if exit_tenures_months
+        else None
+    )
+    exit_reason_coverage = (
+        round(((recorded_exits - exit_reason_missing_count) / recorded_exits) * 100, 1)
+        if recorded_exits
+        else 0
+    )
+
+    retention_insights: list[dict[str, str]] = []
+    if recorded_exits == 0:
+        retention_insights.append({
+            "type": "info",
+            "title": "No exit records yet",
+            "message": "PeopleOS needs recorded exit dates before retention and exit-pattern analytics can be calculated.",
+        })
+    else:
+        retention_insights.append({
+            "type": "info",
+            "title": "Recorded exit activity",
+            "message": f"PeopleOS has {recorded_exits} recorded employee exit(s).",
+        })
+        if average_tenure_at_exit_months is not None:
+            retention_insights.append({
+                "type": "info",
+                "title": "Average tenure at exit",
+                "message": f"Recorded exits had an average tenure of {average_tenure_at_exit_months} months based on joining and exit dates.",
+            })
+        if exit_reason_coverage < 100:
+            retention_insights.append({
+                "type": "attention",
+                "title": "Exit reason data is incomplete",
+                "message": f"Exit reasons are recorded for {exit_reason_coverage}% of exits. Complete missing reasons for cleaner exit analysis.",
+            })
+        top_exit_department = max(exit_department_breakdown, key=exit_department_breakdown.get) if exit_department_breakdown else None
+        if top_exit_department:
+            retention_insights.append({
+                "type": "info",
+                "title": "Most recorded exits by department",
+                "message": f"{top_exit_department} has the most recorded exits ({exit_department_breakdown[top_exit_department]}). This is a count of recorded exits, not an attrition rate.",
+            })
+
     return {
         "total_employees": len(employees),
         "recorded_lifecycle_records": len(records),
@@ -961,8 +1027,13 @@ def lifecycle_summary(db: Session = Depends(get_db)):
         "exit_reason_breakdown": dict(sorted(exit_reason_breakdown.items(), key=lambda item: item[1], reverse=True)),
         "monthly_exits": monthly_exits,
         "unrecorded_inactive": unrecorded_inactive,
+        "average_tenure_at_exit_months": average_tenure_at_exit_months,
+        "exit_reason_coverage": exit_reason_coverage,
+        "exit_department_breakdown": dict(sorted(exit_department_breakdown.items(), key=lambda item: item[1], reverse=True)),
+        "exit_location_breakdown": dict(sorted(exit_location_breakdown.items(), key=lambda item: item[1], reverse=True)),
         "insights": insights,
-        "attrition_note": "PeopleOS does not calculate a historical attrition rate yet because it does not store workforce snapshots or full historical headcount records. Record exits now to build the data foundation for future retention analytics.",
+        "retention_insights": retention_insights,
+        "attrition_note": "PeopleOS does not calculate a historical attrition rate yet because it does not store workforce snapshots or full historical headcount records. The metrics below describe recorded exits and exit patterns only.",
     }
 
 

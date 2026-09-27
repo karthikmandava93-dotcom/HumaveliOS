@@ -98,7 +98,12 @@ type LifecycleAnalytics = {
   exit_reason_breakdown: Record<string, number>;
   monthly_exits: Array<{ month: string; label: string; count: number }>;
   unrecorded_inactive: number;
+  average_tenure_at_exit_months: number | null;
+  exit_reason_coverage: number;
+  exit_department_breakdown: Record<string, number>;
+  exit_location_breakdown: Record<string, number>;
   insights: Array<{ type: "info" | "attention"; title: string; message: string }>;
+  retention_insights: Array<{ type: "info" | "attention"; title: string; message: string }>;
   attrition_note: string;
 };
 
@@ -2471,6 +2476,96 @@ export default function Home() {
                   <h3>Lifecycle insights</h3>
                   <div className="insight-list">
                     {analytics.lifecycle.insights.map((insight) => (
+                      <div className={`insight-item ${insight.type}`} key={`${insight.title}-${insight.message}`}>
+                        <div className="insight-marker">{insight.type === "attention" ? "!" : "i"}</div>
+                        <div><strong>{insight.title}</strong><p>{insight.message}</p></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <p className="analytics-note">{analytics.lifecycle.attrition_note}</p>
+            </div>
+          </section>
+
+
+          {/* ==================================================
+              RETENTION & EXIT ANALYTICS
+              ================================================== */}
+
+          <section className="retention-section">
+            <div className="panel">
+              <div className="panel-header lifecycle-header">
+                <div>
+                  <h2>Retention &amp; Exit Analytics</h2>
+                  <p>Evidence-based exit patterns from recorded lifecycle data.</p>
+                </div>
+                <span className="lifecycle-scope-badge">{analytics.lifecycle.recorded_exits} exits recorded</span>
+              </div>
+
+              <div className="lifecycle-kpi-grid">
+                <div className="recruitment-kpi"><span>Recorded Exits</span><strong>{analytics.lifecycle.recorded_exits}</strong><small>Exit dates recorded</small></div>
+                <div className="recruitment-kpi"><span>Recent Exits</span><strong>{analytics.lifecycle.recent_exits_90_days}</strong><small>Last 90 days</small></div>
+                <div className="recruitment-kpi"><span>Avg. Tenure at Exit</span><strong>{analytics.lifecycle.average_tenure_at_exit_months === null ? "—" : `${analytics.lifecycle.average_tenure_at_exit_months} mo`}</strong><small>Based on recorded exits</small></div>
+                <div className="recruitment-kpi"><span>Exit Reason Coverage</span><strong>{analytics.lifecycle.exit_reason_coverage}%</strong><small>Exits with a reason</small></div>
+              </div>
+
+              <div className="lifecycle-grid">
+                <div>
+                  <h3>Recorded exits by department</h3>
+                  {Object.keys(analytics.lifecycle.exit_department_breakdown).length ? (
+                    <div className="chart-list">
+                      {Object.entries(analytics.lifecycle.exit_department_breakdown).map(([department, count]) => (
+                        <div className="chart-item" key={department}>
+                          <div className="chart-item-top"><span>{department}</span><strong>{count}</strong></div>
+                          <div className="bar-track"><div className="bar-fill blue-fill" style={{ width: `${barWidth(count, analytics.lifecycle.exit_department_breakdown)}%` }} /></div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="profile-empty">No recorded department exit data yet.</div>
+                  )}
+                </div>
+
+                <div>
+                  <h3>Recorded exits by location</h3>
+                  {Object.keys(analytics.lifecycle.exit_location_breakdown).length ? (
+                    <div className="chart-list">
+                      {Object.entries(analytics.lifecycle.exit_location_breakdown).map(([location, count]) => (
+                        <div className="chart-item" key={location}>
+                          <div className="chart-item-top"><span>{location}</span><strong>{count}</strong></div>
+                          <div className="bar-track"><div className="bar-fill purple-fill" style={{ width: `${barWidth(count, analytics.lifecycle.exit_location_breakdown)}%` }} /></div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="profile-empty">No recorded location exit data yet.</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="lifecycle-grid lifecycle-secondary-grid">
+                <div>
+                  <h3>Exit reasons</h3>
+                  {Object.keys(analytics.lifecycle.exit_reason_breakdown).length ? (
+                    <div className="chart-list">
+                      {Object.entries(analytics.lifecycle.exit_reason_breakdown).map(([reason, count]) => (
+                        <div className="chart-item" key={reason}>
+                          <div className="chart-item-top"><span>{reason}</span><strong>{count}</strong></div>
+                          <div className="bar-track"><div className="bar-fill orange-fill" style={{ width: `${barWidth(count, analytics.lifecycle.exit_reason_breakdown)}%` }} /></div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="profile-empty">No recorded exit reasons yet.</div>
+                  )}
+                </div>
+
+                <div>
+                  <h3>Retention insights</h3>
+                  <div className="insight-list">
+                    {analytics.lifecycle.retention_insights.map((insight) => (
                       <div className={`insight-item ${insight.type}`} key={`${insight.title}-${insight.message}`}>
                         <div className="insight-marker">{insight.type === "attention" ? "!" : "i"}</div>
                         <div><strong>{insight.title}</strong><p>{insight.message}</p></div>
