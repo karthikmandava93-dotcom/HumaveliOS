@@ -165,24 +165,25 @@ export default function LoginPage() {
         }
 
         .humavelios-login-visual {
-          min-height: 100vh;
-          padding: 22px;
-          display: flex;
-          align-items: stretch;
-          justify-content: center;
-          background: #020b1d;
-        }
+  min-height: 100vh;
+  padding: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #020b1d;
+}
 
-        .humavelios-login-banner {
-          width: 100%;
-          height: 100%;
-          min-height: 0;
-          object-fit: cover;
-          object-position: center;
-          border-radius: 28px;
-          display: block;
-          box-shadow: 0 30px 80px rgba(2, 11, 29, 0.28);
-        }
+.humavelios-login-banner {
+  width: 100%;
+  max-width: 1100px;
+  height: auto;
+  aspect-ratio: 2048 / 768;
+  object-fit: contain;
+  object-position: center;
+  border-radius: 28px;
+  display: block;
+  box-shadow: 0 30px 80px rgba(2, 11, 29, 0.28);
+}
 
         .humavelios-login-side {
           min-height: 100vh;
@@ -333,24 +334,35 @@ export default function LoginPage() {
         }
 
         @media (max-width: 980px) {
-          .humavelios-login-page {
-            grid-template-columns: 1fr;
-          }
+  .humavelios-login-page {
+    grid-template-columns: 1fr;
+  }
 
-          .humavelios-login-visual {
-            min-height: 38vh;
-            height: 38vh;
-            padding: 14px;
-          }
+  .humavelios-login-visual {
+    min-height: auto;
+    height: auto;
+    padding: 14px;
+  }
 
-          .humavelios-login-side {
-            min-height: auto;
-            padding: 24px 16px 36px;
-          }
+  .humavelios-login-banner {
+    width: 100%;
+    max-width: none;
+    height: auto;
+    aspect-ratio: 2048 / 768;
+    object-fit: contain;
+    object-position: center;
+    border-radius: 22px;
+  }
 
-          .humavelios-login-card {
-            padding: 28px;
-          }
+  .humavelios-login-side {
+    min-height: auto;
+    padding: 24px 16px 36px;
+  }
+
+  .humavelios-login-card {
+    padding: 28px;
+  }
+}
         }
 
         @media (max-width: 560px) {
