@@ -484,6 +484,36 @@ def list_users(request: Request, db: Session = Depends(get_db)):
     return [build_user_response(user, db) for user in users]
 
 
+@app.delete("/users/{user_id}")
+def delete_user(user_id: int, request: Request, db: Session = Depends(get_db)):
+    ensure_admin_request(request)
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    current_admin_id = int(request.state.user["sub"])
+    if user.id == current_admin_id:
+        raise HTTPException(status_code=400, detail="You cannot delete the administrator account you are currently using")
+
+    if user.role == "admin" and user.is_active:
+        active_admins = db.query(User).filter(
+            User.role == "admin",
+            User.is_active == True,
+            User.id != user.id,
+        ).count()
+        if active_admins == 0:
+            raise HTTPException(status_code=400, detail="At least one active administrator must remain")
+
+    link = db.query(UserEmployeeLink).filter(UserEmployeeLink.user_id == user.id).first()
+    if link:
+        db.delete(link)
+
+    deleted_email = user.email
+    db.delete(user)
+    db.commit()
+    return {"message": "User deleted successfully", "email": deleted_email}
+
+
 @app.post("/users", response_model=UserResponse, status_code=201)
 def create_user(user_data: UserCreateRequest, request: Request, db: Session = Depends(get_db)):
     ensure_admin_request(request)

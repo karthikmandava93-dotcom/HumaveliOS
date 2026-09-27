@@ -166,6 +166,8 @@ type AppUser = {
   email: string;
   role: string;
   is_active: boolean;
+  employee_id: number | null;
+  employee_name: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -174,6 +176,7 @@ type UserForm = {
   email: string;
   password: string;
   role: string;
+  employee_id: string;
 };
 
 const USER_ROLES = ["admin", "hr", "manager", "employee"] as const;
@@ -182,6 +185,7 @@ const EMPTY_USER_FORM: UserForm = {
   email: "",
   password: "",
   role: "employee",
+  employee_id: "",
 };
 
 type CandidateForm = {
@@ -750,6 +754,11 @@ export default function Home() {
     userSaving,
     setUserSaving,
   ] = useState(false);
+
+  const [
+    userDeletingId,
+    setUserDeletingId,
+  ] = useState<number | null>(null);
 
   const [
     showCandidateModal,
@@ -1746,7 +1755,12 @@ export default function Home() {
       const created = await apiRequest<AppUser>("/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(userForm),
+        body: JSON.stringify({
+          email: userForm.email,
+          password: userForm.password,
+          role: userForm.role,
+          employee_id: userForm.role === "employee" && userForm.employee_id ? Number(userForm.employee_id) : null,
+        }),
       });
       setUsers((current) => [...current, created]);
       setUserForm({ ...EMPTY_USER_FORM });
@@ -1769,6 +1783,46 @@ export default function Home() {
       setUsers((current) => current.map((item) => item.id === saved.id ? saved : item));
     } catch (err) {
       setUserError(err instanceof Error ? err.message : "Unable to update user.");
+    }
+  }
+
+  async function deleteUser(user: AppUser) {
+    if (user.email === authUser?.email) {
+      setUserError("You cannot delete the administrator account you are currently using.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete the user account for ${user.email}?\n\nThis permanently removes the login account${user.employee_name ? ` and its link to ${user.employee_name}.` : "."}`
+    );
+    if (!confirmed) return;
+
+    try {
+      setUserDeletingId(user.id);
+      setUserError("");
+      await apiRequest<{ message: string; email: string }>(`/users/${user.id}`, {
+        method: "DELETE",
+      });
+      setUsers((current) => current.filter((item) => item.id !== user.id));
+    } catch (err) {
+      setUserError(err instanceof Error ? err.message : "Unable to delete user.");
+    } finally {
+      setUserDeletingId(null);
+    }
+  }
+
+  async function linkUserEmployee(user: AppUser, employeeId: string) {
+    try {
+      setUserError("");
+      const saved = await apiRequest<AppUser>(`/users/${user.id}/employee`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employee_id: employeeId ? Number(employeeId) : null }),
+      });
+      setUsers((current) => current.map((item) => item.id === saved.id ? saved : item));
+    } catch (err) {
+      setUserError(err instanceof Error ? err.message : "Unable to link employee profile.");
+      setUsers((current) => [...current]);
     }
   }
 
@@ -1942,7 +1996,7 @@ export default function Home() {
           </button>
           <button
             className="logout-button"
-            onClick={handleLogout}
+            onClick={() => handleLogout()}
           >
             Logout
           </button>
@@ -2990,9 +3044,9 @@ export default function Home() {
               {USER_ROLES.map((role) => <div className="role-summary-card" key={role}><span>{role}</span><strong>{users.filter((user) => user.role === role && user.is_active).length}</strong><small>active users</small></div>)}
             </div>
             <div className="users-table-wrap">
-              <table className="users-table"><thead><tr><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody>
-                {users.map((user) => <tr key={user.id}><td><strong>{user.email}</strong></td><td><select value={user.role} disabled={user.email === authUser?.email} onChange={(event) => updateUser(user, { role: event.target.value })}>{USER_ROLES.map((role) => <option key={role} value={role}>{role}</option>)}</select></td><td><span className={`status-pill ${user.is_active ? "active" : "inactive"}`}>{user.is_active ? "Active" : "Inactive"}</span></td><td>{new Date(user.created_at).toLocaleDateString()}</td><td><button type="button" className="table-action-button" disabled={user.email === authUser?.email} onClick={() => updateUser(user, { is_active: !user.is_active })}>{user.is_active ? "Deactivate" : "Activate"}</button></td></tr>)}
-                {users.length === 0 && <tr><td colSpan={5}><div className="empty-chart">No users available.</div></td></tr>}
+              <table className="users-table"><thead><tr><th>Email</th><th>Role</th><th>Employee Profile</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody>
+                {users.map((user) => <tr key={user.id}><td><strong>{user.email}</strong></td><td><select value={user.role} disabled={user.email === authUser?.email} onChange={(event) => updateUser(user, { role: event.target.value })}>{USER_ROLES.map((role) => <option key={role} value={role}>{role}</option>)}</select></td><td><select className="user-employee-select" value={user.employee_id ?? ""} disabled={user.role !== "employee" || user.email === authUser?.email} onChange={(event) => linkUserEmployee(user, event.target.value)}><option value="">Not linked</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.full_name} · {employee.employee_id}</option>)}</select></td><td><span className={`status-pill ${user.is_active ? "active" : "inactive"}`}>{user.is_active ? "Active" : "Inactive"}</span></td><td>{new Date(user.created_at).toLocaleDateString()}</td><td><div className="row-actions"><button type="button" className="table-action-button" disabled={user.email === authUser?.email || userDeletingId === user.id} onClick={() => updateUser(user, { is_active: !user.is_active })}>{user.is_active ? "Deactivate" : "Activate"}</button><button type="button" className="delete-button" disabled={user.email === authUser?.email || userDeletingId === user.id} onClick={() => deleteUser(user)}>{userDeletingId === user.id ? "Deleting..." : "Delete"}</button></div></td></tr>)}
+                {users.length === 0 && <tr><td colSpan={6}><div className="empty-chart">No users available.</div></td></tr>}
               </tbody></table>
             </div>
             <div className="role-permission-note"><strong>Access model</strong><span><b>Admin</b>: full access + user management · <b>HR</b>: employees, analytics, recruitment and lifecycle · <b>Manager</b>: overview, employees and people analytics · <b>Employee</b>: personal profile only.</span></div>
@@ -3382,7 +3436,8 @@ export default function Home() {
             <div className="modal-header"><div><span className="eyebrow">Administration</span><h2>Create User</h2><p>Create a login account with a role and temporary password.</p></div><button type="button" className="close-button" onClick={() => setShowUserModal(false)} disabled={userSaving}>×</button></div>
             <form className="form-grid" onSubmit={saveUser}>
               <div className="form-field"><label>Email</label><input type="email" required value={userForm.email} onChange={(event) => setUserForm((current) => ({ ...current, email: event.target.value }))} /></div>
-              <div className="form-field"><label>Role</label><select value={userForm.role} onChange={(event) => setUserForm((current) => ({ ...current, role: event.target.value }))}>{USER_ROLES.map((role) => <option key={role} value={role}>{role}</option>)}</select></div>
+              <div className="form-field"><label>Role</label><select value={userForm.role} onChange={(event) => setUserForm((current) => ({ ...current, role: event.target.value, employee_id: event.target.value === "employee" ? current.employee_id : "" }))}>{USER_ROLES.map((role) => <option key={role} value={role}>{role}</option>)}</select></div>
+              {userForm.role === "employee" && <div className="form-field"><label>Link employee profile</label><select value={userForm.employee_id} onChange={(event) => setUserForm((current) => ({ ...current, employee_id: event.target.value }))}><option value="">No profile linked yet</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.full_name} · {employee.employee_id}</option>)}</select></div>}
               <div className="form-field full-field"><label>Temporary password</label><input type="password" required minLength={8} value={userForm.password} onChange={(event) => setUserForm((current) => ({ ...current, password: event.target.value }))} placeholder="At least 8 characters" /></div>
               {userError && <div className="form-error full-field">{userError}</div>}
               <div className="modal-actions field-wide"><button type="button" className="cancel-button" onClick={() => setShowUserModal(false)} disabled={userSaving}>Cancel</button><button type="submit" className="save-button" disabled={userSaving}>{userSaving ? "Creating..." : "Create User"}</button></div>
