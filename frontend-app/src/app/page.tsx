@@ -303,6 +303,12 @@ export default function Home() {
   ] = useState<number | null>(null);
 
 
+  const [
+    viewingEmployee,
+    setViewingEmployee,
+  ] = useState<Employee | null>(null);
+
+
   /* ==========================================================
      LOAD DASHBOARD
      ========================================================== */
@@ -484,6 +490,106 @@ export default function Home() {
         [field]: value,
       })
     );
+  }
+
+
+  function calculateTenure(employee: Employee) {
+    const joined = new Date(employee.date_of_joining);
+    if (Number.isNaN(joined.getTime())) {
+      return "Not available";
+    }
+
+    const now = new Date();
+    let months =
+      (now.getFullYear() - joined.getFullYear()) * 12 +
+      (now.getMonth() - joined.getMonth());
+
+    if (now.getDate() < joined.getDate()) {
+      months -= 1;
+    }
+
+    if (months < 0) {
+      return "Not available";
+    }
+
+    if (months < 12) {
+      return `${months} month${months === 1 ? "" : "s"}`;
+    }
+
+    const years = Math.floor(months / 12);
+    const remainingMonths = months % 12;
+    if (!remainingMonths) {
+      return `${years} year${years === 1 ? "" : "s"}`;
+    }
+
+    return `${years}y ${remainingMonths}m`;
+  }
+
+
+  function formatDate(value: string | null | undefined) {
+    if (!value) {
+      return "Not provided";
+    }
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return "Not provided";
+    }
+
+    return new Intl.DateTimeFormat("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }).format(parsed);
+  }
+
+
+  function getSkillList(value: string | null | undefined) {
+    if (!value) {
+      return [];
+    }
+
+    return value
+      .split(/[,;\n|]+/)
+      .map((skill) => skill.trim())
+      .filter((skill) =>
+        skill && !PLACEHOLDER_TEXTS.has(skill.toLowerCase())
+      );
+  }
+
+
+  function getEmployeeCompleteness(employee: Employee) {
+    const checks = [
+      employee.email,
+      employee.department,
+      employee.designation,
+      employee.employment_type,
+      employee.date_of_joining,
+      employee.location,
+      employee.manager,
+      employee.skills,
+    ];
+
+    const completed = checks.filter((value) => {
+      if (typeof value !== "string") {
+        return Boolean(value);
+      }
+
+      const cleaned = value.trim();
+      return Boolean(cleaned) && !PLACEHOLDER_TEXTS.has(cleaned.toLowerCase());
+    }).length;
+
+    return Math.round((completed / checks.length) * 100);
+  }
+
+
+  function openEmployeeProfile(employee: Employee) {
+    setViewingEmployee(employee);
+  }
+
+
+  function closeEmployeeProfile() {
+    setViewingEmployee(null);
   }
 
 
@@ -1834,6 +1940,15 @@ export default function Home() {
                               <div className="row-actions">
 
                                 <button
+                                  className="view-button"
+                                  onClick={() =>
+                                    openEmployeeProfile(employee)
+                                  }
+                                >
+                                  View
+                                </button>
+
+                                <button
                                   className="edit-button"
                                   onClick={
                                     () =>
@@ -1904,6 +2019,148 @@ export default function Home() {
 
         </>
 
+      )}
+
+
+      {/* ======================================================
+          EMPLOYEE 360 PROFILE
+          ====================================================== */}
+
+      {viewingEmployee && (
+
+        <div
+          className="modal-overlay"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeEmployeeProfile();
+            }
+          }}
+        >
+
+          <div className="modal profile-modal">
+
+            <div className="modal-header">
+
+              <div>
+                <h2>Employee 360</h2>
+                <p>Employee-level HR and people analytics snapshot</p>
+              </div>
+
+              <button
+                className="close-button"
+                onClick={closeEmployeeProfile}
+                aria-label="Close employee profile"
+              >
+                ×
+              </button>
+
+            </div>
+
+            <div className="profile-body">
+
+              <div className="profile-hero">
+                <div className="profile-avatar">
+                  {displayText(viewingEmployee.full_name, "?")
+                    .charAt(0)
+                    .toUpperCase()}
+                </div>
+
+                <div className="profile-hero-copy">
+                  <h3>{displayText(viewingEmployee.full_name, "Unnamed employee")}</h3>
+                  <p>
+                    {displayText(viewingEmployee.designation, "Role not provided")} · {displayText(viewingEmployee.department, "Department not provided")}
+                  </p>
+                  <div className="profile-meta-row">
+                    <span>{displayText(viewingEmployee.employee_id, "No ID")}</span>
+                    <span className={viewingEmployee.is_active ? "status active" : "status inactive"}>
+                      {viewingEmployee.is_active ? "Active" : "Inactive"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="profile-kpi-grid">
+
+                <div className="profile-kpi">
+                  <span>Tenure</span>
+                  <strong>{calculateTenure(viewingEmployee)}</strong>
+                  <small>Since {formatDate(viewingEmployee.date_of_joining)}</small>
+                </div>
+
+                <div className="profile-kpi">
+                  <span>Performance</span>
+                  <strong>{displayPerformance(viewingEmployee.performance_score)}</strong>
+                  <small>Latest recorded score</small>
+                </div>
+
+                <div className="profile-kpi">
+                  <span>Data completeness</span>
+                  <strong>{getEmployeeCompleteness(viewingEmployee)}%</strong>
+                  <small>Profile fields completed</small>
+                </div>
+
+              </div>
+
+              <div className="profile-section-grid">
+
+                <section className="profile-section">
+                  <div className="profile-section-header">
+                    <h3>Employment details</h3>
+                    <p>Core workforce information</p>
+                  </div>
+
+                  <div className="profile-detail-grid">
+                    <div><span>Department</span><strong>{displayText(viewingEmployee.department)}</strong></div>
+                    <div><span>Designation</span><strong>{displayText(viewingEmployee.designation)}</strong></div>
+                    <div><span>Employment type</span><strong>{displayText(viewingEmployee.employment_type)}</strong></div>
+                    <div><span>Location</span><strong>{displayText(viewingEmployee.location)}</strong></div>
+                    <div><span>Manager</span><strong>{displayText(viewingEmployee.manager)}</strong></div>
+                    <div><span>Joined</span><strong>{formatDate(viewingEmployee.date_of_joining)}</strong></div>
+                  </div>
+                </section>
+
+                <section className="profile-section">
+                  <div className="profile-section-header">
+                    <h3>Contact</h3>
+                    <p>Employee communication details</p>
+                  </div>
+
+                  <div className="profile-detail-grid single-column">
+                    <div><span>Email</span><strong>{displayText(viewingEmployee.email)}</strong></div>
+                    <div><span>Status</span><strong>{displayText(viewingEmployee.status)}</strong></div>
+                    <div><span>Last updated</span><strong>{formatDate(viewingEmployee.updated_at)}</strong></div>
+                  </div>
+                </section>
+
+              </div>
+
+              <section className="profile-section">
+                <div className="profile-section-header">
+                  <h3>Skills</h3>
+                  <p>Skills recorded in the employee profile</p>
+                </div>
+
+                {getSkillList(viewingEmployee.skills).length ? (
+                  <div className="skill-list">
+                    {getSkillList(viewingEmployee.skills).map((skill) => (
+                      <span className="skill-chip" key={skill}>{skill}</span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="profile-empty">No skills have been recorded for this employee.</div>
+                )}
+              </section>
+
+              <div className="profile-note">
+                <strong>PeopleOS profile insight</strong>
+                <span>This view summarizes the data currently stored for this employee. It does not infer information that is not recorded in PeopleOS.</span>
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
       )}
 
 
