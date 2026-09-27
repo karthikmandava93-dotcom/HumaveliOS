@@ -136,6 +136,13 @@ class CandidateResponse(BaseModel):
     updated_at: datetime
 
 
+class CandidateImportResponse(BaseModel):
+    imported: int
+    failed: int
+    errors: list[str] = []
+    candidates: list[CandidateResponse] = []
+
+
 # ============================================================
 # DATA QUALITY HELPERS
 # ============================================================
@@ -759,6 +766,85 @@ def create_candidate(candidate_data: CandidateCreate, db: Session = Depends(get_
     db.commit()
     db.refresh(candidate)
     return candidate
+
+
+@app.post("/candidates/import", response_model=CandidateImportResponse)
+def import_candidates(
+    candidate_data: list[CandidateCreate],
+    db: Session = Depends(get_db),
+):
+    """Bulk import validated candidate records while reporting row-level duplicates."""
+    if not candidate_data:
+        raise HTTPException(status_code=400, detail="At least one candidate is required")
+
+    if len(candidate_data) > 500:
+        raise HTTPException(status_code=400, detail="Import is limited to 500 candidates per upload")
+
+    existing_ids = {row[0] for row in db.query(Candidate.candidate_id).filter(
+        Candidate.candidate_id.in_([item.candidate_id.strip() for item in candidate_data])
+    ).all()}
+    existing_emails = {row[0] for row in db.query(Candidate.email).filter(
+        Candidate.email.in_([str(item.email).strip().lower() for item in candidate_data])
+    ).all()}
+
+    seen_ids: set[str] = set()
+    seen_emails: set[str] = set()
+    errors: list[str] = []
+    imported: list[Candidate] = []
+
+    for row_number, item in enumerate(candidate_data, start=2):
+        candidate_id = item.candidate_id.strip()
+        email = str(item.email).strip().lower()
+
+        if not candidate_id or not item.full_name.strip() or not item.role.strip() or not item.department.strip():
+            errors.append(f"Row {row_number}: required candidate fields are missing")
+            continue
+        if candidate_id in existing_ids or candidate_id in seen_ids:
+            errors.append(f"Row {row_number}: candidate ID '{candidate_id}' already exists")
+            continue
+        if email in existing_emails or email in seen_emails:
+            errors.append(f"Row {row_number}: candidate email '{email}' already exists")
+            continue
+        if item.stage not in RECRUITMENT_STAGES:
+            errors.append(f"Row {row_number}: invalid stage '{item.stage}'")
+            continue
+        if item.hired_date and item.hired_date < item.applied_date:
+            errors.append(f"Row {row_number}: hired date cannot be before applied date")
+            continue
+
+        candidate = Candidate(
+            candidate_id=candidate_id,
+            full_name=item.full_name.strip(),
+            email=email,
+            role=item.role.strip(),
+            department=item.department.strip(),
+            source=item.source.strip() or "Direct",
+            stage=item.stage,
+            applied_date=item.applied_date,
+            interview_date=item.interview_date,
+            offer_date=item.offer_date,
+            hired_date=item.hired_date,
+            recruiter=item.recruiter.strip() if item.recruiter else None,
+            notes=item.notes.strip() if item.notes else None,
+        )
+        db.add(candidate)
+        imported.append(candidate)
+        seen_ids.add(candidate_id)
+        seen_emails.add(email)
+
+    if imported:
+        db.commit()
+        for candidate in imported:
+            db.refresh(candidate)
+    else:
+        db.rollback()
+
+    return {
+        "imported": len(imported),
+        "failed": len(errors),
+        "errors": errors[:100],
+        "candidates": imported,
+    }
 
 
 @app.put("/candidates/{candidate_id}", response_model=CandidateResponse)

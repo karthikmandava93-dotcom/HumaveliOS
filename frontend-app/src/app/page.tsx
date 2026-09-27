@@ -4,6 +4,7 @@ import {
   FormEvent,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -135,6 +136,29 @@ type CandidateForm = {
   hired_date: string;
   recruiter: string;
   notes: string;
+};
+
+type ImportCandidate = {
+  candidate_id: string;
+  full_name: string;
+  email: string;
+  role: string;
+  department: string;
+  source: string;
+  stage: string;
+  applied_date: string;
+  interview_date: string | null;
+  offer_date: string | null;
+  hired_date: string | null;
+  recruiter: string | null;
+  notes: string | null;
+};
+
+type CandidateImportResult = {
+  imported: number;
+  failed: number;
+  errors: string[];
+  candidates: Candidate[];
 };
 
 const CANDIDATE_STAGES = [
@@ -303,6 +327,149 @@ async function apiRequest<T>(
 
 
 /* ============================================================
+   CSV IMPORT HELPERS
+   ============================================================ */
+
+const IMPORT_HEADERS = [
+  "candidate_id",
+  "full_name",
+  "email",
+  "role",
+  "department",
+  "source",
+  "stage",
+  "applied_date",
+  "interview_date",
+  "offer_date",
+  "hired_date",
+  "recruiter",
+  "notes",
+];
+
+function parseCsvLine(line: string) {
+  const values: string[] = [];
+  let current = "";
+  let quoted = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (char === '"') {
+      if (quoted && line[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (char === "," && !quoted) {
+      values.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  values.push(current.trim());
+  return values;
+}
+
+function parseCandidateCsv(text: string) {
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim() !== "");
+  if (lines.length < 2) {
+    throw new Error("CSV must contain a header row and at least one candidate row.");
+  }
+
+  const header = parseCsvLine(lines[0]).map((value) => value.toLowerCase().trim());
+  const headerIndex = new Map(header.map((value, index) => [value, index]));
+  const missingHeaders = IMPORT_HEADERS.filter((value) => !headerIndex.has(value));
+  if (missingHeaders.length) {
+    throw new Error(`Missing CSV columns: ${missingHeaders.join(", ")}`);
+  }
+
+  const validRows: ImportCandidate[] = [];
+  const errors: string[] = [];
+  const seenIds = new Set<string>();
+  const seenEmails = new Set<string>();
+
+  const read = (values: string[], key: string) => values[headerIndex.get(key) ?? -1]?.trim() ?? "";
+  const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
+
+  lines.slice(1).forEach((line, rowOffset) => {
+    const rowNumber = rowOffset + 2;
+    const values = parseCsvLine(line);
+    const candidateId = read(values, "candidate_id");
+    const fullName = read(values, "full_name");
+    const email = read(values, "email").toLowerCase();
+    const role = read(values, "role");
+    const department = read(values, "department");
+    const source = read(values, "source") || "Direct";
+    const stage = read(values, "stage") || "Applied";
+    const appliedDate = read(values, "applied_date");
+    const interviewDate = read(values, "interview_date");
+    const offerDate = read(values, "offer_date");
+    const hiredDate = read(values, "hired_date");
+    const recruiter = read(values, "recruiter");
+    const notes = read(values, "notes");
+
+    const rowErrors: string[] = [];
+    if (!candidateId || !fullName || !email || !role || !department || !appliedDate) {
+      rowErrors.push("required field missing");
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      rowErrors.push("invalid email");
+    }
+    if (appliedDate && !validDate(appliedDate)) rowErrors.push("applied_date must be YYYY-MM-DD");
+    for (const [label, value] of [["interview_date", interviewDate], ["offer_date", offerDate], ["hired_date", hiredDate]] as const) {
+      if (value && !validDate(value)) rowErrors.push(`${label} must be YYYY-MM-DD`);
+    }
+    if (hiredDate && appliedDate && validDate(hiredDate) && validDate(appliedDate) && hiredDate < appliedDate) {
+      rowErrors.push("hired_date cannot be before applied_date");
+    }
+    if (!CANDIDATE_STAGES.includes(stage)) rowErrors.push(`invalid stage: ${stage}`);
+    if (candidateId && seenIds.has(candidateId)) rowErrors.push("duplicate candidate_id in file");
+    if (email && seenEmails.has(email)) rowErrors.push("duplicate email in file");
+
+    if (rowErrors.length) {
+      errors.push(`Row ${rowNumber}: ${rowErrors.join("; ")}`);
+      return;
+    }
+
+    seenIds.add(candidateId);
+    seenEmails.add(email);
+    validRows.push({
+      candidate_id: candidateId,
+      full_name: fullName,
+      email,
+      role,
+      department,
+      source,
+      stage,
+      applied_date: appliedDate,
+      interview_date: interviewDate || null,
+      offer_date: offerDate || null,
+      hired_date: hiredDate || null,
+      recruiter: recruiter || null,
+      notes: notes || null,
+    });
+  });
+
+  return { validRows, errors };
+}
+
+function downloadCandidateTemplate() {
+  const csv = `${IMPORT_HEADERS.join(",")}\n`;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "peopleos-candidate-import-template.csv";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+
+/* ============================================================
    PAGE
    ============================================================ */
 
@@ -427,6 +594,33 @@ export default function Home() {
     deletingCandidateId,
     setDeletingCandidateId,
   ] = useState<number | null>(null);
+
+  const candidateFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [
+    showImportModal,
+    setShowImportModal,
+  ] = useState(false);
+
+  const [
+    importRows,
+    setImportRows,
+  ] = useState<ImportCandidate[]>([]);
+
+  const [
+    importErrors,
+    setImportErrors,
+  ] = useState<string[]>([]);
+
+  const [
+    importSaving,
+    setImportSaving,
+  ] = useState(false);
+
+  const [
+    importMessage,
+    setImportMessage,
+  ] = useState("");
 
 
   /* ==========================================================
@@ -918,6 +1112,84 @@ export default function Home() {
       setError(err instanceof Error ? err.message : "Unable to delete candidate.");
     } finally {
       setDeletingCandidateId(null);
+    }
+  }
+
+  function openCandidateFilePicker() {
+    candidateFileInputRef.current?.click();
+  }
+
+  async function handleCandidateCsvUpload(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = parseCandidateCsv(text);
+      setImportRows(parsed.validRows);
+      setImportErrors(parsed.errors);
+      setImportMessage(
+        parsed.validRows.length
+          ? `${parsed.validRows.length} valid candidate${parsed.validRows.length === 1 ? "" : "s"} ready to import.`
+          : "No valid candidate rows found."
+      );
+      setShowImportModal(true);
+    } catch (err) {
+      setImportRows([]);
+      setImportErrors([]);
+      setImportMessage(
+        err instanceof Error ? err.message : "Unable to read the CSV file."
+      );
+      setShowImportModal(true);
+    }
+  }
+
+  function closeImportModal() {
+    if (importSaving) return;
+    setShowImportModal(false);
+    setImportRows([]);
+    setImportErrors([]);
+    setImportMessage("");
+  }
+
+  async function importCandidateRows() {
+    if (!importRows.length) return;
+    setImportSaving(true);
+    setImportMessage("");
+
+    try {
+      const result = await apiRequest<CandidateImportResult>(
+        "/candidates/import",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(importRows),
+        }
+      );
+
+      setCandidates((current) => [
+        ...result.candidates,
+        ...current,
+      ]);
+      setImportRows([]);
+      setImportErrors(result.errors);
+      setImportMessage(
+        `${result.imported} candidate${result.imported === 1 ? "" : "s"} imported${result.failed ? `; ${result.failed} skipped` : ""}.`
+      );
+      await loadDashboard();
+
+      if (!result.failed) {
+        setTimeout(() => closeImportModal(), 700);
+      }
+    } catch (err) {
+      setImportMessage(
+        err instanceof Error ? err.message : "Unable to import candidates."
+      );
+    } finally {
+      setImportSaving(false);
     }
   }
 
@@ -1975,7 +2247,18 @@ export default function Home() {
                   <h2>Recruitment Hub</h2>
                   <p>Candidate pipeline and hiring analytics based on recorded recruitment data</p>
                 </div>
-                <button className="add-button" onClick={openAddCandidateModal}>+ Add Candidate</button>
+                <div className="recruitment-header-actions">
+                  <input
+                    ref={candidateFileInputRef}
+                    className="hidden-file-input"
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={handleCandidateCsvUpload}
+                  />
+                  <button className="secondary-button" onClick={downloadCandidateTemplate}>Template</button>
+                  <button className="secondary-button" onClick={openCandidateFilePicker}>Import CSV</button>
+                  <button className="add-button" onClick={openAddCandidateModal}>+ Add Candidate</button>
+                </div>
               </div>
 
               <div className="recruitment-kpi-grid">
@@ -2421,6 +2704,70 @@ export default function Home() {
 
         </>
 
+      )}
+
+
+      {/* ======================================================
+          CANDIDATE CSV IMPORT MODAL
+          ====================================================== */}
+
+      {showImportModal && (
+        <div className="modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closeImportModal(); }}>
+          <div className="modal import-modal">
+            <div className="modal-header">
+              <div>
+                <h2>Import Candidates</h2>
+                <p>Review your CSV before adding candidates to PeopleOS.</p>
+              </div>
+              <button className="close-button" onClick={closeImportModal} aria-label="Close import">×</button>
+            </div>
+
+            {importMessage && <div className={importRows.length || importMessage.includes("imported") ? "import-message" : "form-error"}>{importMessage}</div>}
+
+            {importErrors.length > 0 && (
+              <div className="import-errors">
+                <strong>Rows needing attention ({importErrors.length})</strong>
+                <div>{importErrors.slice(0, 8).map((error) => <span key={error}>{error}</span>)}</div>
+                {importErrors.length > 8 && <small>Showing the first 8 issues.</small>}
+              </div>
+            )}
+
+            {importRows.length > 0 && (
+              <div className="import-preview">
+                <div className="import-preview-header">
+                  <strong>Ready to import: {importRows.length}</strong>
+                  <span>Maximum 500 rows per upload</span>
+                </div>
+                <div className="table-container">
+                  <table>
+                    <thead><tr><th>Candidate ID</th><th>Name</th><th>Role</th><th>Department</th><th>Source</th><th>Stage</th><th>Applied</th></tr></thead>
+                    <tbody>
+                      {importRows.slice(0, 8).map((candidate) => (
+                        <tr key={candidate.candidate_id}>
+                          <td>{candidate.candidate_id}</td>
+                          <td>{candidate.full_name}</td>
+                          <td>{candidate.role}</td>
+                          <td>{candidate.department}</td>
+                          <td>{candidate.source}</td>
+                          <td>{candidate.stage}</td>
+                          <td>{candidate.applied_date}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {importRows.length > 8 && <p className="analytics-note">Showing the first 8 valid rows. All valid rows will be imported.</p>}
+              </div>
+            )}
+
+            <div className="modal-actions">
+              <button type="button" className="cancel-button" onClick={closeImportModal} disabled={importSaving}>Cancel</button>
+              <button type="button" className="save-button" onClick={importCandidateRows} disabled={importSaving || importRows.length === 0}>
+                {importSaving ? "Importing..." : `Import ${importRows.length || ""} Candidate${importRows.length === 1 ? "" : "s"}`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
 
