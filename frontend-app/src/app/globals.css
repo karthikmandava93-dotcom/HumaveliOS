@@ -2293,3 +2293,36 @@ td {
     max-width: 180px;
   }
 }
+
+
+/* HUMAVELIOS USER & ROLE MANAGEMENT */
+.users-panel { display: block; }
+.role-summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin:22px 0; }
+.role-summary-card { padding:18px; border:1px solid #e2e8f0; border-radius:14px; background:#f8fafc; }
+.role-summary-card span,.role-summary-card small { display:block; color:#64748b; text-transform:capitalize; }
+.role-summary-card strong { display:block; margin:4px 0; font-size:30px; color:#0f172a; }
+.users-table-wrap { overflow-x:auto; border:1px solid #e2e8f0; border-radius:14px; }
+.users-table { width:100%; border-collapse:collapse; }
+.users-table th,.users-table td { padding:14px 16px; text-align:left; border-bottom:1px solid #eef2f7; white-space:nowrap; }
+.users-table th { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:#64748b; background:#f8fafc; }
+.users-table td select { min-width:120px; }
+.status-pill { display:inline-flex; align-items:center; padding:5px 9px; border-radius:999px; font-size:12px; font-weight:700; }
+.status-pill.active { background:#dcfce7; color:#166534; }
+.status-pill.inactive { background:#f1f5f9; color:#64748b; }
+.table-action-button { padding:8px 10px; border:1px solid #dbe3ee; border-radius:8px; background:white; cursor:pointer; }
+.table-action-button:disabled { opacity:.55; cursor:not-allowed; }
+.role-permission-note { display:flex; flex-direction:column; gap:6px; margin-top:18px; padding:14px 16px; border-radius:12px; background:#eff6ff; color:#334155; }
+.compact-error { margin-bottom:18px; }
+.small-modal { max-width:640px; }
+.employee-self-layout { min-height:100vh; padding:40px; }
+.self-card { max-width:980px; margin:0 auto; padding:32px; border:1px solid #e2e8f0; border-radius:22px; background:white; box-shadow:0 20px 55px rgba(15,23,42,.08); }
+.self-brand { display:flex; align-items:center; gap:12px; margin-bottom:40px; }
+.self-brand span,.self-profile-grid span { display:block; color:#64748b; }
+.self-heading { margin-bottom:26px; }
+.self-heading h1 { margin:5px 0 8px; }
+.self-profile-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin:22px 0 28px; }
+.self-profile-grid > div { padding:16px; border:1px solid #e2e8f0; border-radius:14px; background:#f8fafc; }
+.self-profile-grid strong { display:block; margin-top:5px; color:#0f172a; }
+.self-profile-wide { grid-column:1 / -1; }
+@media(max-width:900px){ .role-summary-grid,.self-profile-grid{grid-template-columns:1fr 1fr;} }
+@media(max-width:640px){ .role-summary-grid,.self-profile-grid{grid-template-columns:1fr;} .self-profile-wide{grid-column:auto;} .employee-self-layout{padding:16px;} .self-card{padding:20px;} }

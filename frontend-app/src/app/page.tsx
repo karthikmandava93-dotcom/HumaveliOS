@@ -161,6 +161,29 @@ type Candidate = {
   updated_at: string;
 };
 
+type AppUser = {
+  id: number;
+  email: string;
+  role: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+type UserForm = {
+  email: string;
+  password: string;
+  role: string;
+};
+
+const USER_ROLES = ["admin", "hr", "manager", "employee"] as const;
+
+const EMPTY_USER_FORM: UserForm = {
+  email: "",
+  password: "",
+  role: "employee",
+};
+
 type CandidateForm = {
   candidate_id: string;
   full_name: string;
@@ -554,6 +577,7 @@ const NAV_ITEMS = [
   { id: "analytics", label: "People Analytics", icon: "◔", description: "Workforce, trends and performance" },
   { id: "recruitment", label: "Recruitment", icon: "↗", description: "Candidates, pipeline and funnel" },
   { id: "lifecycle", label: "Lifecycle", icon: "↻", description: "Lifecycle, retention and exits" },
+  { id: "users", label: "Users & Roles", icon: "⚙", description: "Manage accounts and access levels" },
 ] as const;
 
 type ViewId = (typeof NAV_ITEMS)[number]["id"];
@@ -703,6 +727,31 @@ export default function Home() {
   ] = useState<Candidate[]>([]);
 
   const [
+    users,
+    setUsers,
+  ] = useState<AppUser[]>([]);
+
+  const [
+    showUserModal,
+    setShowUserModal,
+  ] = useState(false);
+
+  const [
+    userForm,
+    setUserForm,
+  ] = useState<UserForm>({ ...EMPTY_USER_FORM });
+
+  const [
+    userError,
+    setUserError,
+  ] = useState("");
+
+  const [
+    userSaving,
+    setUserSaving,
+  ] = useState(false);
+
+  const [
     showCandidateModal,
     setShowCandidateModal,
   ] = useState(false);
@@ -764,68 +813,48 @@ export default function Home() {
      LOAD DASHBOARD
      ========================================================== */
 
-  async function loadDashboard() {
-
+  async function loadDashboard(role = authUser?.role || "admin") {
     try {
-
       setLoading(true);
       setError("");
 
+      const employeeData = await apiRequest<Employee[]>("/employees?skip=0&limit=100");
+      const analyticsData = await apiRequest<Analytics>("/analytics/summary");
+      setEmployees(employeeData);
+      setAnalytics(analyticsData);
 
-      const [
-        employeeData,
-        analyticsData,
-        candidateData,
-      ] = await Promise.all([
-
-        apiRequest<Employee[]>(
-          "/employees?skip=0&limit=100"
-        ),
-
-        apiRequest<Analytics>(
-          "/analytics/summary"
-        ),
-
-        apiRequest<Candidate[]>(
-          "/candidates?skip=0&limit=100"
-        ),
-      ]);
-
-
-      setEmployees(
-        employeeData
-      );
-
-
-      setAnalytics(
-        analyticsData
-      );
-
-      setCandidates(candidateData);
-
-    } catch (err) {
-
-      console.error(
-        "HumaveliOS API error:",
-        err
-      );
-
-
-      if (err instanceof Error) {
-
-        setError(
-          `${err.message} — API: ${API_URL}`
-        );
-
+      if (role === "admin" || role === "hr") {
+        setCandidates(await apiRequest<Candidate[]>("/candidates?skip=0&limit=100"));
       } else {
-
-        setError(
-          `Unable to connect to HumaveliOS API — API: ${API_URL}`
-        );
+        setCandidates([]);
       }
 
+      if (role === "admin") {
+        setUsers(await apiRequest<AppUser[]>("/users"));
+      } else {
+        setUsers([]);
+      }
+    } catch (err) {
+      console.error("HumaveliOS API error:", err);
+      setError(err instanceof Error ? `${err.message} — API: ${API_URL}` : `Unable to connect to HumaveliOS API — API: ${API_URL}`);
     } finally {
+      setLoading(false);
+    }
+  }
 
+  async function loadMyEmployeeProfile() {
+    try {
+      setLoading(true);
+      setError("");
+      const profile = await apiRequest<Employee>("/employees/me");
+      setEmployees([profile]);
+      setAnalytics(null);
+      setCandidates([]);
+      setUsers([]);
+    } catch (err) {
+      setEmployees([]);
+      setError(err instanceof Error ? err.message : "Unable to load your employee profile.");
+    } finally {
       setLoading(false);
     }
   }
@@ -846,16 +875,27 @@ export default function Home() {
       return;
     }
 
+    let parsedUser: { email: string; role: string } | null = null;
     if (storedUser) {
       try {
-        setAuthUser(JSON.parse(storedUser));
+        parsedUser = JSON.parse(storedUser);
+        setAuthUser(parsedUser);
       } catch {
         localStorage.removeItem(AUTH_USER_KEY);
       }
     }
 
+    if (!parsedUser) {
+      window.location.replace("/login");
+      return;
+    }
+
     setAuthReady(true);
-    loadDashboard();
+    if (parsedUser.role === "employee") {
+      loadMyEmployeeProfile();
+    } else {
+      loadDashboard(parsedUser.role);
+    }
   }, []);
 
 
@@ -1698,6 +1738,40 @@ export default function Home() {
   }
 
 
+  async function saveUser(event: FormEvent) {
+    event.preventDefault();
+    try {
+      setUserSaving(true);
+      setUserError("");
+      const created = await apiRequest<AppUser>("/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(userForm),
+      });
+      setUsers((current) => [...current, created]);
+      setUserForm({ ...EMPTY_USER_FORM });
+      setShowUserModal(false);
+    } catch (err) {
+      setUserError(err instanceof Error ? err.message : "Unable to create user.");
+    } finally {
+      setUserSaving(false);
+    }
+  }
+
+  async function updateUser(user: AppUser, changes: { role?: string; is_active?: boolean; password?: string }) {
+    try {
+      setUserError("");
+      const saved = await apiRequest<AppUser>(`/users/${user.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(changes),
+      });
+      setUsers((current) => current.map((item) => item.id === saved.id ? saved : item));
+    } catch (err) {
+      setUserError(err instanceof Error ? err.message : "Unable to update user.");
+    }
+  }
+
   /* ==========================================================
      BAR WIDTH
      ========================================================== */
@@ -1739,6 +1813,40 @@ export default function Home() {
   }
 
 
+  if (authUser?.role === "employee") {
+    const employee = employees[0];
+    return (
+      <main className="dashboard">
+        <div className="employee-self-layout">
+          <section className="self-card">
+            <div className="self-brand"><div className="brand-icon">H</div><div><strong>HumaveliOS</strong><span>People. Work. Intelligence.</span></div></div>
+            <div className="self-heading"><span className="eyebrow">Employee Workspace</span><h1>My Profile</h1><p>View the employee information linked to your work account.</p></div>
+            {loading ? (
+              <div className="message-card">Loading your profile...</div>
+            ) : employee ? (
+              <div className="self-profile-grid">
+                <div><span>Name</span><strong>{employee.full_name}</strong></div>
+                <div><span>Employee ID</span><strong>{employee.employee_id}</strong></div>
+                <div><span>Email</span><strong>{employee.email}</strong></div>
+                <div><span>Department</span><strong>{employee.department}</strong></div>
+                <div><span>Designation</span><strong>{employee.designation}</strong></div>
+                <div><span>Employment Type</span><strong>{employee.employment_type}</strong></div>
+                <div><span>Location</span><strong>{displayText(employee.location)}</strong></div>
+                <div><span>Manager</span><strong>{displayText(employee.manager)}</strong></div>
+                <div><span>Status</span><strong>{employee.status}</strong></div>
+                <div><span>Performance</span><strong>{displayPerformance(employee.performance_score)}</strong></div>
+                <div className="self-profile-wide"><span>Skills</span><strong>{displayText(employee.skills)}</strong></div>
+              </div>
+            ) : (
+              <div className="error-message"><strong>No linked employee profile</strong><span>{error || "Ask HR to use the same email on your employee record and user account."}</span></div>
+            )}
+            <button type="button" className="logout-button" onClick={handleLogout}>Logout</button>
+          </section>
+        </div>
+      </main>
+    );
+  }
+
   if (
     loading &&
     !analytics
@@ -1767,7 +1875,7 @@ export default function Home() {
 
         <aside className="sidebar">
           <div className="sidebar-brand">
-            <div className="brand-icon">P</div>
+            <div className="brand-icon">H</div>
             <div>
               <strong>HumaveliOS</strong>
               <span>People. Work. Intelligence.</span>
@@ -1777,7 +1885,12 @@ export default function Home() {
           <div className="sidebar-section-label">Workspace</div>
 
           <nav className="sidebar-nav" aria-label="HumaveliOS navigation">
-            {NAV_ITEMS.map((item) => (
+            {NAV_ITEMS.filter((item) => {
+              const role = authUser?.role || "employee";
+              if (role === "admin" || role === "hr") return true;
+              if (role === "manager") return ["overview", "employees", "analytics"].includes(item.id);
+              return false;
+            }).map((item) => (
               <button
                 type="button"
                 key={item.id}
@@ -2870,6 +2983,21 @@ export default function Home() {
               EMPLOYEE MANAGEMENT
               ================================================== */}
 
+          <section className={`panel users-panel view-section ${activeView === "users" ? "view-section-active" : "view-section-hidden"}`}>
+            <div className="panel-header"><div><h2>Users & Roles</h2><p>Create accounts and control access to HumaveliOS modules.</p></div><button type="button" className="save-button" onClick={() => { setUserError(""); setUserForm({ ...EMPTY_USER_FORM }); setShowUserModal(true); }}>+ Add User</button></div>
+            {userError && <div className="error-message compact-error"><strong>User management</strong><span>{userError}</span><button type="button" onClick={() => setUserError("")}>Dismiss</button></div>}
+            <div className="role-summary-grid">
+              {USER_ROLES.map((role) => <div className="role-summary-card" key={role}><span>{role}</span><strong>{users.filter((user) => user.role === role && user.is_active).length}</strong><small>active users</small></div>)}
+            </div>
+            <div className="users-table-wrap">
+              <table className="users-table"><thead><tr><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody>
+                {users.map((user) => <tr key={user.id}><td><strong>{user.email}</strong></td><td><select value={user.role} disabled={user.email === authUser?.email} onChange={(event) => updateUser(user, { role: event.target.value })}>{USER_ROLES.map((role) => <option key={role} value={role}>{role}</option>)}</select></td><td><span className={`status-pill ${user.is_active ? "active" : "inactive"}`}>{user.is_active ? "Active" : "Inactive"}</span></td><td>{new Date(user.created_at).toLocaleDateString()}</td><td><button type="button" className="table-action-button" disabled={user.email === authUser?.email} onClick={() => updateUser(user, { is_active: !user.is_active })}>{user.is_active ? "Deactivate" : "Activate"}</button></td></tr>)}
+                {users.length === 0 && <tr><td colSpan={5}><div className="empty-chart">No users available.</div></td></tr>}
+              </tbody></table>
+            </div>
+            <div className="role-permission-note"><strong>Access model</strong><span><b>Admin</b>: full access + user management · <b>HR</b>: employees, analytics, recruitment and lifecycle · <b>Manager</b>: overview, employees and people analytics · <b>Employee</b>: personal profile only.</span></div>
+          </section>
+
           <section className={`panel employee-panel view-section ${activeView === "employees" ? "view-section-active" : "view-section-hidden"}`}>
 
             <div className="employee-panel-header">
@@ -3247,6 +3375,21 @@ export default function Home() {
       {/* ======================================================
           CANDIDATE CSV IMPORT MODAL
           ====================================================== */}
+
+      {showUserModal && (
+        <div className="modal-overlay" onMouseDown={() => !userSaving && setShowUserModal(false)}>
+          <div className="modal small-modal" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="modal-header"><div><span className="eyebrow">Administration</span><h2>Create User</h2><p>Create a login account with a role and temporary password.</p></div><button type="button" className="close-button" onClick={() => setShowUserModal(false)} disabled={userSaving}>×</button></div>
+            <form className="form-grid" onSubmit={saveUser}>
+              <div className="form-field"><label>Email</label><input type="email" required value={userForm.email} onChange={(event) => setUserForm((current) => ({ ...current, email: event.target.value }))} /></div>
+              <div className="form-field"><label>Role</label><select value={userForm.role} onChange={(event) => setUserForm((current) => ({ ...current, role: event.target.value }))}>{USER_ROLES.map((role) => <option key={role} value={role}>{role}</option>)}</select></div>
+              <div className="form-field full-field"><label>Temporary password</label><input type="password" required minLength={8} value={userForm.password} onChange={(event) => setUserForm((current) => ({ ...current, password: event.target.value }))} placeholder="At least 8 characters" /></div>
+              {userError && <div className="form-error full-field">{userError}</div>}
+              <div className="modal-actions field-wide"><button type="button" className="cancel-button" onClick={() => setShowUserModal(false)} disabled={userSaving}>Cancel</button><button type="submit" className="save-button" disabled={userSaving}>{userSaving ? "Creating..." : "Create User"}</button></div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showImportModal && (
         <div className="modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closeImportModal(); }}>

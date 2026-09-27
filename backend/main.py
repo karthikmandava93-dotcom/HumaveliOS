@@ -23,7 +23,7 @@ from models import Candidate, Employee, EmployeeLifecycle, User
 # ============================================================
 
 app = FastAPI(
-    title="PeopleOS API",
+    title="HumaveliOS API",
     description="People Analytics and HR Operations Platform",
     version="1.0.0",
 )
@@ -56,6 +56,31 @@ class LoginResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int
     user: dict
+
+
+USER_ROLES = {"admin", "hr", "manager", "employee"}
+
+
+class UserCreateRequest(BaseModel):
+    email: EmailStr
+    password: str
+    role: str = "employee"
+
+
+class UserUpdateRequest(BaseModel):
+    role: Optional[str] = None
+    password: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class UserResponse(BaseModel):
+    id: int
+    email: EmailStr
+    role: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
 
 
 def hash_password(password: str, salt: bytes) -> str:
@@ -154,9 +179,41 @@ async def authentication_middleware(request, call_next):
 
     token = authorization.split(" ", 1)[1].strip()
     try:
-        request.state.user = decode_token(token)
+        payload = decode_token(token)
+        user_id = int(payload.get("sub"))
     except Exception:
         return JSONResponse(status_code=401, content={"detail": "Invalid or expired authentication token"})
+
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user or not user.is_active:
+            return JSONResponse(status_code=401, content={"detail": "User account is inactive"})
+
+        role = user.role
+        request.state.user = {"sub": str(user.id), "email": user.email, "role": role}
+
+    allowed = True
+    if path.startswith("/users"):
+        allowed = role == "admin"
+    elif path.startswith("/candidates") or path.startswith("/recruitment"):
+        allowed = role in {"admin", "hr"}
+    elif path.startswith("/analytics"):
+        allowed = role in {"admin", "hr", "manager"}
+    elif path == "/employees/me":
+        allowed = True
+    elif "/lifecycle" in path or path.startswith("/lifecycle"):
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            allowed = role in {"admin", "hr"}
+        else:
+            allowed = role in {"admin", "hr", "manager"}
+    elif path.startswith("/employees"):
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            allowed = role in {"admin", "hr"}
+        else:
+            allowed = role in {"admin", "hr", "manager"}
+
+    if not allowed:
+        return JSONResponse(status_code=403, content={"detail": "Your role does not have access to this resource"})
 
     return await call_next(request)
 
@@ -375,13 +432,107 @@ def auth_me(request: Request):
 
 
 # ============================================================
+# USER & ROLE MANAGEMENT
+# ============================================================
+
+
+def ensure_admin_request(request: Request) -> None:
+    if getattr(request.state, "user", {}).get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Administrator access required")
+
+
+@app.get("/users", response_model=list[UserResponse])
+def list_users(request: Request, db: Session = Depends(get_db)):
+    ensure_admin_request(request)
+    return db.query(User).order_by(User.created_at.asc()).all()
+
+
+@app.post("/users", response_model=UserResponse, status_code=201)
+def create_user(user_data: UserCreateRequest, request: Request, db: Session = Depends(get_db)):
+    ensure_admin_request(request)
+    email = str(user_data.email).strip().lower()
+    role = user_data.role.strip().lower()
+    password = user_data.password
+    if role not in USER_ROLES:
+        raise HTTPException(status_code=400, detail=f"Invalid role. Choose one of: {', '.join(sorted(USER_ROLES))}")
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long")
+    if db.query(User).filter(User.email == email).first():
+        raise HTTPException(status_code=409, detail="A user with this email already exists")
+
+    salt = secrets.token_bytes(16)
+    user = User(
+        email=email,
+        password_salt=base64.urlsafe_b64encode(salt).decode("ascii"),
+        password_hash=hash_password(password, salt),
+        role=role,
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@app.put("/users/{user_id}", response_model=UserResponse)
+def update_user(user_id: int, user_data: UserUpdateRequest, request: Request, db: Session = Depends(get_db)):
+    ensure_admin_request(request)
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    current_admin_id = int(request.state.user["sub"])
+    if user.id == current_admin_id and user_data.is_active is False:
+        raise HTTPException(status_code=400, detail="You cannot deactivate your own administrator account")
+
+    if user_data.role is not None:
+        if user.id == current_admin_id and user_data.role.strip().lower() != "admin":
+            raise HTTPException(status_code=400, detail="You cannot change your own administrator role")
+        role = user_data.role.strip().lower()
+        if role not in USER_ROLES:
+            raise HTTPException(status_code=400, detail=f"Invalid role. Choose one of: {', '.join(sorted(USER_ROLES))}")
+        if user.role == "admin" and role != "admin" and user.is_active:
+            active_admins = db.query(User).filter(User.role == "admin", User.is_active == True, User.id != user.id).count()
+            if active_admins == 0:
+                raise HTTPException(status_code=400, detail="At least one active administrator must remain")
+        user.role = role
+
+    if user_data.password is not None:
+        if len(user_data.password) < 8:
+            raise HTTPException(status_code=400, detail="Password must be at least 8 characters long")
+        salt = secrets.token_bytes(16)
+        user.password_salt = base64.urlsafe_b64encode(salt).decode("ascii")
+        user.password_hash = hash_password(user_data.password, salt)
+
+    if user_data.is_active is not None:
+        if user.role == "admin" and user.is_active and user_data.is_active is False:
+            active_admins = db.query(User).filter(User.role == "admin", User.is_active == True, User.id != user.id).count()
+            if active_admins == 0:
+                raise HTTPException(status_code=400, detail="At least one active administrator must remain")
+        user.is_active = user_data.is_active
+
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@app.get("/employees/me", response_model=EmployeeResponse)
+def get_my_employee_profile(request: Request, db: Session = Depends(get_db)):
+    email = str(request.state.user.get("email", "")).strip().lower()
+    employee = db.query(Employee).filter(Employee.email == email).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="No employee profile is linked to this account")
+    return employee
+
+
+# ============================================================
 # ROOT
 # ============================================================
 
 @app.get("/")
 def root():
     return {
-        "message": "PeopleOS API is running",
+        "message": "HumaveliOS API is running",
         "status": "healthy",
         "version": "1.0.0",
         "docs": "/docs",
@@ -396,7 +547,7 @@ def root():
 def health():
     return {
         "status": "healthy",
-        "service": "PeopleOS",
+        "service": "HumaveliOS",
     }
 
 
