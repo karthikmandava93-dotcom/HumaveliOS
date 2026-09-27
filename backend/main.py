@@ -185,6 +185,7 @@ app.add_middleware(
 # Creates missing tables without deleting existing data.
 
 Base.metadata.create_all(bind=engine)
+ensure_admin_user()
 
 
 # ============================================================
