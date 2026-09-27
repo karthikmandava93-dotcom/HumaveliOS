@@ -576,12 +576,12 @@ function downloadCandidateTemplate() {
 
 
 const NAV_ITEMS = [
-  { id: "overview", label: "Overview", icon: "âŒ‚", description: "Workforce health at a glance" },
-  { id: "employees", label: "Employees", icon: "👥", description: "Employee records and Employee 360" },
-  { id: "analytics", label: "People Analytics", icon: "â—”", description: "Workforce, trends and performance" },
-  { id: "recruitment", label: "Recruitment", icon: "â†—", description: "Candidates, pipeline and funnel" },
-  { id: "lifecycle", label: "Lifecycle", icon: "↻", description: "Lifecycle, retention and exits" },
-  { id: "users", label: "Users & Roles", icon: "⚙", description: "Manage accounts and access levels" },
+  { id: "overview", label: "Overview", icon: "\u2302", description: "Workforce health at a glance" },
+{ id: "employees", label: "Employees", icon: "\u{1F465}", description: "Employee records and Employee 360" },
+{ id: "analytics", label: "People Analytics", icon: "\u25D4", description: "Workforce, trends and performance" },
+{ id: "recruitment", label: "Recruitment", icon: "\u2197", description: "Candidates, pipeline and funnel" },
+{ id: "lifecycle", label: "Lifecycle", icon: "\u21BB", description: "Lifecycle, retention and exits" },
+{ id: "users", label: "Users & Roles", icon: "\u2699", description: "Manage accounts and access levels" },
 ] as const;
 
 type ViewId = (typeof NAV_ITEMS)[number]["id"];
