@@ -548,6 +548,16 @@ function downloadCandidateTemplate() {
 }
 
 
+const NAV_ITEMS = [
+  { id: "overview", label: "Overview", icon: "⌂", description: "Workforce health at a glance" },
+  { id: "employees", label: "Employees", icon: "👥", description: "Employee records and Employee 360" },
+  { id: "analytics", label: "People Analytics", icon: "◔", description: "Workforce, trends and performance" },
+  { id: "recruitment", label: "Recruitment", icon: "↗", description: "Candidates, pipeline and funnel" },
+  { id: "lifecycle", label: "Lifecycle", icon: "↻", description: "Lifecycle, retention and exits" },
+] as const;
+
+type ViewId = (typeof NAV_ITEMS)[number]["id"];
+
 /* ============================================================
    PAGE
    ============================================================ */
@@ -564,6 +574,12 @@ export default function Home() {
     authUser,
     setAuthUser,
   ] = useState<{ email: string; role: string } | null>(null);
+
+
+  const [
+    activeView,
+    setActiveView,
+  ] = useState<ViewId>("overview");
 
 
   const [
@@ -1747,33 +1763,58 @@ export default function Home() {
   return (
     <main className="dashboard">
 
+      <div className="app-layout">
+
+        <aside className="sidebar">
+          <div className="sidebar-brand">
+            <div className="brand-icon">P</div>
+            <div>
+              <strong>PeopleOS</strong>
+              <span>People Operations OS</span>
+            </div>
+          </div>
+
+          <div className="sidebar-section-label">Workspace</div>
+
+          <nav className="sidebar-nav" aria-label="PeopleOS navigation">
+            {NAV_ITEMS.map((item) => (
+              <button
+                type="button"
+                key={item.id}
+                className={`nav-item ${activeView === item.id ? "active" : ""}`}
+                onClick={() => setActiveView(item.id)}
+              >
+                <span className="nav-item-icon">{item.icon}</span>
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </nav>
+
+          <div className="sidebar-footer">
+            <div className="sidebar-account">
+              <div className="account-avatar">{authUser?.email?.charAt(0).toUpperCase() || "P"}</div>
+              <div>
+                <strong>{authUser?.email || "PeopleOS Admin"}</strong>
+                <span>{authUser?.role || "Admin"}</span>
+              </div>
+            </div>
+            <button type="button" className="sidebar-logout" onClick={handleLogout}>Logout</button>
+          </div>
+        </aside>
+
+        <div className="dashboard-content">
+
       {/* ======================================================
           HEADER
           ====================================================== */}
 
       <header className="topbar">
 
-        <div className="brand-row">
-
-          <div className="brand-icon">
-            P
-          </div>
-
-          <div>
-
-            <h1>
-              PeopleOS
-            </h1>
-
-            <p>
-              HR Analytics &
-              Employee Management
-            </p>
-
-          </div>
-
+        <div className="page-heading">
+          <span className="eyebrow">PeopleOS Workspace</span>
+          <h1>{NAV_ITEMS.find((item) => item.id === activeView)?.label}</h1>
+          <p>{NAV_ITEMS.find((item) => item.id === activeView)?.description}</p>
         </div>
-
 
         <div className="header-actions">
           {authUser && (
@@ -1833,7 +1874,7 @@ export default function Home() {
               KPI CARDS
               ================================================== */}
 
-          <section className="stats-grid">
+          <section className={`stats-grid view-section ${activeView === "overview" ? "view-section-active" : "view-section-hidden"}`}>
 
             <div className="stat-card">
 
@@ -1947,7 +1988,7 @@ export default function Home() {
               PEOPLE INSIGHTS
               ================================================== */}
 
-          <section className="insights-grid">
+          <section className={`insights-grid view-section ${activeView === "overview" ? "view-section-active" : "view-section-hidden"}`}>
 
             <div className="panel insights-panel">
               <div className="panel-header">
@@ -2020,7 +2061,7 @@ export default function Home() {
               ANALYTICS
               ================================================== */}
 
-          <section className="analytics-grid">
+          <section className={`analytics-grid view-section ${activeView === "analytics" ? "view-section-active" : "view-section-hidden"}`}>
 
             {/* DEPARTMENT */}
 
@@ -2390,7 +2431,7 @@ export default function Home() {
               WORKFORCE TRENDS
               ================================================== */}
 
-          <section className="analytics-grid workforce-trends-grid">
+          <section className={`analytics-grid workforce-trends-grid view-section ${activeView === "analytics" ? "view-section-active" : "view-section-hidden"}`}>
 
             <div className="panel">
 
@@ -2477,7 +2518,7 @@ export default function Home() {
               EMPLOYEE LIFECYCLE
               ================================================== */}
 
-          <section className="lifecycle-section">
+          <section className={`lifecycle-section view-section ${activeView === "lifecycle" ? "view-section-active" : "view-section-hidden"}`}>
 
             <div className="panel">
               <div className="panel-header lifecycle-header">
@@ -2560,7 +2601,7 @@ export default function Home() {
               RETENTION & EXIT ANALYTICS
               ================================================== */}
 
-          <section className="retention-section">
+          <section className={`retention-section view-section ${activeView === "lifecycle" ? "view-section-active" : "view-section-hidden"}`}>
             <div className="panel">
               <div className="panel-header lifecycle-header">
                 <div>
@@ -2650,7 +2691,7 @@ export default function Home() {
               RECRUITMENT HUB
               ================================================== */}
 
-          <section className="recruitment-section">
+          <section className={`recruitment-section view-section ${activeView === "recruitment" ? "view-section-active" : "view-section-hidden"}`}>
             <div className="panel recruitment-overview">
               <div className="panel-header recruitment-header">
                 <div>
@@ -2829,7 +2870,7 @@ export default function Home() {
               EMPLOYEE MANAGEMENT
               ================================================== */}
 
-          <section className="panel employee-panel">
+          <section className={`panel employee-panel view-section ${activeView === "employees" ? "view-section-active" : "view-section-hidden"}`}>
 
             <div className="employee-panel-header">
 
@@ -4035,6 +4076,9 @@ export default function Home() {
         </div>
 
       )}
+
+        </div>
+      </div>
 
     </main>
   );
