@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr
 from sqlalchemy.orm import Session
 
 from database import Base, SessionLocal, engine, get_db
-from models import Candidate, Employee, EmployeeLifecycle, User, UserEmployeeLink
+from models import AuditLog, Candidate, Employee, EmployeeLifecycle, User, UserEmployeeLink
 
 
 # ============================================================
@@ -87,6 +87,18 @@ class UserResponse(BaseModel):
 
 class UserEmployeeLinkRequest(BaseModel):
     employee_id: Optional[int] = None
+
+
+class AuditLogResponse(BaseModel):
+    id: int
+    actor_user_id: Optional[int] = None
+    actor_email: str
+    action: str
+    module: str
+    target_type: Optional[str] = None
+    target_id: Optional[str] = None
+    details: Optional[str] = None
+    created_at: datetime
 
 
 
@@ -200,7 +212,9 @@ async def authentication_middleware(request, call_next):
         request.state.user = {"sub": str(user.id), "email": user.email, "role": role}
 
     allowed = True
-    if path.startswith("/users"):
+    if path.startswith("/audit-logs"):
+        allowed = role == "admin"
+    elif path.startswith("/users"):
         allowed = role == "admin"
     elif path.startswith("/candidates") or path.startswith("/recruitment"):
         allowed = role in {"admin", "hr"}
@@ -418,14 +432,35 @@ def clean_dimension(value: Optional[str]) -> Optional[str]:
 # ============================================================
 
 @app.post("/auth/login", response_model=LoginResponse)
-def login(login_data: LoginRequest, db: Session = Depends(get_db)):
+def login(login_data: LoginRequest, request: Request, db: Session = Depends(get_db)):
     email = str(login_data.email).strip().lower()
     user = db.query(User).filter(User.email == email).first()
 
     if not user or not user.is_active or not verify_password(login_data.password, user.password_hash, user.password_salt):
+        log_audit(
+            db,
+            request,
+            "LOGIN_FAILED",
+            "Authentication",
+            target_type="User",
+            details="Invalid credentials or inactive account",
+            actor_user_id=None,
+            actor_email=email,
+        )
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     token = encode_token(user)
+    log_audit(
+        db,
+        request,
+        "LOGIN_SUCCESS",
+        "Authentication",
+        target_type="User",
+        target_id=user.id,
+        details="Successful login",
+        actor_user_id=user.id,
+        actor_email=user.email,
+    )
     return LoginResponse(
         access_token=token,
         expires_in=AUTH_TOKEN_TTL_SECONDS,
@@ -436,6 +471,44 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
 @app.get("/auth/me")
 def auth_me(request: Request):
     return request.state.user
+
+
+@app.get("/audit-logs", response_model=list[AuditLogResponse])
+def get_audit_logs(
+    request: Request,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=500),
+    action: Optional[str] = Query(default=None),
+    module: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    ensure_admin_request(request)
+
+    query = db.query(AuditLog)
+
+    if action and action != "All":
+        query = query.filter(AuditLog.action == action)
+
+    if module and module != "All":
+        query = query.filter(AuditLog.module == module)
+
+    if search:
+        pattern = f"%{search}%"
+        query = query.filter(
+            (AuditLog.actor_email.ilike(pattern))
+            | (AuditLog.target_type.ilike(pattern))
+            | (AuditLog.target_id.ilike(pattern))
+            | (AuditLog.details.ilike(pattern))
+        )
+
+    return (
+        query
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 
 # ============================================================
@@ -477,6 +550,46 @@ def ensure_employee_link_available(employee_id: int, db: Session, *, exclude_use
     return employee
 
 
+def log_audit(
+    db: Session,
+    request: Request | None,
+    action: str,
+    module: str,
+    *,
+    target_type: str | None = None,
+    target_id: str | int | None = None,
+    details: str | None = None,
+    actor_user_id: int | None = None,
+    actor_email: str | None = None,
+) -> None:
+    """Record a non-sensitive activity entry without blocking the main action."""
+    state_user = getattr(getattr(request, "state", None), "user", {}) if request else {}
+    if actor_user_id is None and state_user.get("sub"):
+        try:
+            actor_user_id = int(state_user["sub"])
+        except (TypeError, ValueError):
+            actor_user_id = None
+
+    if actor_email is None:
+        actor_email = state_user.get("email") or "unknown"
+
+    try:
+        db.add(
+            AuditLog(
+                actor_user_id=actor_user_id,
+                actor_email=actor_email,
+                action=action,
+                module=module,
+                target_type=target_type,
+                target_id=str(target_id) if target_id is not None else None,
+                details=details,
+            )
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
 @app.get("/users", response_model=list[UserResponse])
 def list_users(request: Request, db: Session = Depends(get_db)):
     ensure_admin_request(request)
@@ -509,8 +622,18 @@ def delete_user(user_id: int, request: Request, db: Session = Depends(get_db)):
         db.delete(link)
 
     deleted_email = user.email
+    deleted_role = user.role
     db.delete(user)
     db.commit()
+    log_audit(
+        db,
+        request,
+        "USER_DELETED",
+        "Users & Roles",
+        target_type="User",
+        target_id=user_id,
+        details=f"Deleted user {deleted_email} ({deleted_role})",
+    )
     return {"message": "User deleted successfully", "email": deleted_email}
 
 
@@ -547,6 +670,15 @@ def create_user(user_data: UserCreateRequest, request: Request, db: Session = De
         db.add(UserEmployeeLink(user_id=user.id, employee_id=employee.id))
     db.commit()
     db.refresh(user)
+    log_audit(
+        db,
+        request,
+        "USER_CREATED",
+        "Users & Roles",
+        target_type="User",
+        target_id=user.id,
+        details=f"Created user {user.email} with role {user.role}",
+    )
     return build_user_response(user, db)
 
 
@@ -558,6 +690,10 @@ def update_user(user_id: int, user_data: UserUpdateRequest, request: Request, db
         raise HTTPException(status_code=404, detail="User not found")
 
     current_admin_id = int(request.state.user["sub"])
+    old_role = user.role
+    old_active = user.is_active
+    changes = []
+
     if user.id == current_admin_id and user_data.is_active is False:
         raise HTTPException(status_code=400, detail="You cannot deactivate your own administrator account")
 
@@ -572,6 +708,7 @@ def update_user(user_id: int, user_data: UserUpdateRequest, request: Request, db
             if active_admins == 0:
                 raise HTTPException(status_code=400, detail="At least one active administrator must remain")
         user.role = role
+        changes.append(f"role: {old_role} -> {role}")
         if role != "employee":
             existing_link = db.query(UserEmployeeLink).filter(UserEmployeeLink.user_id == user.id).first()
             if existing_link:
@@ -583,6 +720,7 @@ def update_user(user_id: int, user_data: UserUpdateRequest, request: Request, db
         salt = secrets.token_bytes(16)
         user.password_salt = base64.urlsafe_b64encode(salt).decode("ascii")
         user.password_hash = hash_password(user_data.password, salt)
+        changes.append("password changed")
 
     if user_data.is_active is not None:
         if user.role == "admin" and user.is_active and user_data.is_active is False:
@@ -590,9 +728,20 @@ def update_user(user_id: int, user_data: UserUpdateRequest, request: Request, db
             if active_admins == 0:
                 raise HTTPException(status_code=400, detail="At least one active administrator must remain")
         user.is_active = user_data.is_active
+        if old_active != user_data.is_active:
+            changes.append(f"status: {'active' if old_active else 'inactive'} -> {'active' if user_data.is_active else 'inactive'}")
 
     db.commit()
     db.refresh(user)
+    log_audit(
+        db,
+        request,
+        "USER_UPDATED",
+        "Users & Roles",
+        target_type="User",
+        target_id=user.id,
+        details="; ".join(changes) if changes else "User update request completed",
+    )
     return build_user_response(user, db)
 
 
@@ -613,8 +762,18 @@ def link_employee_to_user(
     existing = db.query(UserEmployeeLink).filter(UserEmployeeLink.user_id == user.id).first()
     if link_data.employee_id is None:
         if existing:
+            linked_employee_id = existing.employee_id
             db.delete(existing)
             db.commit()
+            log_audit(
+                db,
+                request,
+                "USER_EMPLOYEE_UNLINKED",
+                "Users & Roles",
+                target_type="User",
+                target_id=user.id,
+                details=f"Unlinked employee profile {linked_employee_id}",
+            )
         return build_user_response(user, db)
 
     employee = ensure_employee_link_available(link_data.employee_id, db, exclude_user_id=user.id)
@@ -624,6 +783,15 @@ def link_employee_to_user(
         db.add(UserEmployeeLink(user_id=user.id, employee_id=employee.id))
     db.commit()
     db.refresh(user)
+    log_audit(
+        db,
+        request,
+        "USER_EMPLOYEE_LINKED",
+        "Users & Roles",
+        target_type="User",
+        target_id=user.id,
+        details=f"Linked employee profile {employee.id}",
+    )
     return build_user_response(user, db)
 
 
@@ -851,6 +1019,7 @@ def get_employee(
 )
 def create_employee(
     employee_data: EmployeeCreate,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     employee_id = (
@@ -981,6 +1150,17 @@ def create_employee(
     db.add(employee)
     db.commit()
     db.refresh(employee)
+    log_audit(
+        db,
+        request,
+        "EMPLOYEE_CREATED",
+        "Employees",
+        target_type="Employee",
+        target_id=employee.id,
+        details=f"Created employee {employee.full_name} ({employee.employee_id})",
+        actor_user_id=None,
+        actor_email="system",
+    )
 
     return employee
 
@@ -996,6 +1176,7 @@ def create_employee(
 def update_employee(
     employee_id: int,
     employee_data: EmployeeCreate,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     employee = (
@@ -1129,6 +1310,15 @@ def update_employee(
 
     db.commit()
     db.refresh(employee)
+    log_audit(
+        db,
+        request,
+        "EMPLOYEE_UPDATED",
+        "Employees",
+        target_type="Employee",
+        target_id=employee.id,
+        details=f"Updated employee {employee.full_name} ({employee.employee_id})",
+    )
 
     return employee
 
@@ -1142,6 +1332,7 @@ def update_employee(
 )
 def delete_employee(
     employee_id: int,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     employee = (
@@ -1158,8 +1349,19 @@ def delete_employee(
             detail="Employee not found",
         )
 
+    deleted_name = employee.full_name
+    deleted_employee_code = employee.employee_id
     db.delete(employee)
     db.commit()
+    log_audit(
+        db,
+        request,
+        "EMPLOYEE_DELETED",
+        "Employees",
+        target_type="Employee",
+        target_id=employee_id,
+        details=f"Deleted employee {deleted_name} ({deleted_employee_code})",
+    )
 
     return {
         "message": (
@@ -1214,6 +1416,7 @@ def get_employee_lifecycle(
 def update_employee_lifecycle(
     employee_id: int,
     lifecycle_data: EmployeeLifecycleUpdate,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
@@ -1267,6 +1470,15 @@ def update_employee_lifecycle(
 
     db.commit()
     db.refresh(record)
+    log_audit(
+        db,
+        request,
+        "LIFECYCLE_UPDATED",
+        "Employee Lifecycle",
+        target_type="Employee",
+        target_id=employee.id,
+        details=f"Lifecycle status set to {record.lifecycle_status}",
+    )
 
     return EmployeeLifecycleResponse(
         employee_id=employee.id,
@@ -1504,7 +1716,7 @@ def get_candidates(
 
 
 @app.post("/candidates", response_model=CandidateResponse, status_code=201)
-def create_candidate(candidate_data: CandidateCreate, db: Session = Depends(get_db)):
+def create_candidate(candidate_data: CandidateCreate, request: Request, db: Session = Depends(get_db)):
     candidate_id = candidate_data.candidate_id.strip()
     email = str(candidate_data.email).strip().lower()
 
@@ -1541,12 +1753,22 @@ def create_candidate(candidate_data: CandidateCreate, db: Session = Depends(get_
     db.add(candidate)
     db.commit()
     db.refresh(candidate)
+    log_audit(
+        db,
+        request,
+        "CANDIDATE_CREATED",
+        "Recruitment",
+        target_type="Candidate",
+        target_id=candidate.id,
+        details=f"Created candidate {candidate.full_name} for {candidate.role}",
+    )
     return candidate
 
 
 @app.post("/candidates/import", response_model=CandidateImportResponse)
 def import_candidates(
     candidate_data: list[CandidateCreate],
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Bulk import validated candidate records while reporting row-level duplicates."""
@@ -1615,6 +1837,15 @@ def import_candidates(
     else:
         db.rollback()
 
+    log_audit(
+        db,
+        request,
+        "CANDIDATES_IMPORTED",
+        "Recruitment",
+        target_type="Candidate",
+        details=f"Imported {len(imported)} candidate(s); {len(errors)} failed",
+    )
+
     return {
         "imported": len(imported),
         "failed": len(errors),
@@ -1624,7 +1855,7 @@ def import_candidates(
 
 
 @app.put("/candidates/{candidate_id}", response_model=CandidateResponse)
-def update_candidate(candidate_id: int, candidate_data: CandidateCreate, db: Session = Depends(get_db)):
+def update_candidate(candidate_id: int, candidate_data: CandidateCreate, request: Request, db: Session = Depends(get_db)):
     candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
@@ -1658,16 +1889,36 @@ def update_candidate(candidate_id: int, candidate_data: CandidateCreate, db: Ses
     candidate.notes = candidate_data.notes.strip() if candidate_data.notes else None
     db.commit()
     db.refresh(candidate)
+    log_audit(
+        db,
+        request,
+        "CANDIDATE_UPDATED",
+        "Recruitment",
+        target_type="Candidate",
+        target_id=candidate.id,
+        details=f"Updated candidate {candidate.full_name} stage to {candidate.stage}",
+    )
     return candidate
 
 
 @app.delete("/candidates/{candidate_id}")
-def delete_candidate(candidate_id: int, db: Session = Depends(get_db)):
+def delete_candidate(candidate_id: int, request: Request, db: Session = Depends(get_db)):
     candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
+    deleted_name = candidate.full_name
+    deleted_candidate_code = candidate.candidate_id
     db.delete(candidate)
     db.commit()
+    log_audit(
+        db,
+        request,
+        "CANDIDATE_DELETED",
+        "Recruitment",
+        target_type="Candidate",
+        target_id=candidate_id,
+        details=f"Deleted candidate {deleted_name} ({deleted_candidate_code})",
+    )
     return {"message": "Candidate deleted successfully"}
 
 
