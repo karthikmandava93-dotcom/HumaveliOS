@@ -779,6 +779,13 @@ export default function Home() {
   ] = useState("All");
 
   const [
+    auditPage,
+    setAuditPage,
+  ] = useState(1);
+
+  const AUDIT_PAGE_SIZE = 10;
+
+  const [
     showUserModal,
     setShowUserModal,
   ] = useState(false);
@@ -1933,6 +1940,41 @@ export default function Home() {
       return matchesAction && matchesModule && (!query || searchable.includes(query));
     });
   }, [auditLogs, auditSearch, auditActionFilter, auditModuleFilter]);
+
+  const auditTotalPages = Math.max(
+    1,
+    Math.ceil(filteredAuditLogs.length / AUDIT_PAGE_SIZE)
+  );
+
+  const paginatedAuditLogs = useMemo(() => {
+    const safePage = Math.min(auditPage, auditTotalPages);
+    const start = (safePage - 1) * AUDIT_PAGE_SIZE;
+    return filteredAuditLogs.slice(start, start + AUDIT_PAGE_SIZE);
+  }, [filteredAuditLogs, auditPage, auditTotalPages]);
+
+  useEffect(() => {
+    setAuditPage(1);
+  }, [auditSearch, auditActionFilter, auditModuleFilter]);
+
+  useEffect(() => {
+    if (auditPage > auditTotalPages) {
+      setAuditPage(auditTotalPages);
+    }
+  }, [auditPage, auditTotalPages]);
+
+
+  function getAuditActionClass(action: string) {
+    if (action.includes("FAILED") || action.includes("DELETED")) {
+      return "audit-action audit-action-attention";
+    }
+    if (action.includes("CREATED") || action.includes("IMPORTED") || action.includes("LINKED")) {
+      return "audit-action audit-action-success";
+    }
+    if (action.includes("LOGOUT") || action.includes("UNLINKED")) {
+      return "audit-action audit-action-muted";
+    }
+    return "audit-action audit-action-info";
+  }
 
 
   function formatDateTime(value: string | null | undefined) {
@@ -3206,8 +3248,11 @@ export default function Home() {
             </div>
 
             <div className="audit-summary">
-              <strong>{filteredAuditLogs.length}</strong>
-              <span>activity record{filteredAuditLogs.length === 1 ? "" : "s"} shown</span>
+              <div>
+                <strong>{filteredAuditLogs.length}</strong>
+                <span>activity record{filteredAuditLogs.length === 1 ? "" : "s"} shown</span>
+              </div>
+              <span>Page {Math.min(auditPage, auditTotalPages)} of {auditTotalPages}</span>
             </div>
 
             <div className="table-container">
@@ -3223,22 +3268,27 @@ export default function Home() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredAuditLogs.length ? filteredAuditLogs.map((log) => (
+                  {paginatedAuditLogs.length ? paginatedAuditLogs.map((log) => (
                     <tr key={log.id}>
-                      <td>{formatDateTime(log.created_at)}</td>
+                      <td>
+                        <div className="audit-datetime">
+                          <strong>{formatDateTime(log.created_at).split(",")[0]}</strong>
+                          <span>{formatDateTime(log.created_at).split(",").slice(1).join(",").trim()}</span>
+                        </div>
+                      </td>
                       <td>
                         <div className="employee-cell">
                           <div className="avatar">{displayText(log.actor_email, "?").charAt(0).toUpperCase()}</div>
                           <div>
                             <div className="employee-name">{displayText(log.actor_email, "System")}</div>
-                            <div className="employee-meta">{log.actor_user_id ? `User #${log.actor_user_id}` : "No user ID"}</div>
+                            <div className="employee-meta">{log.actor_user_id ? `User #${log.actor_user_id}` : "System activity"}</div>
                           </div>
                         </div>
                       </td>
-                      <td><span className="candidate-stage stage-interview">{log.action.replace(/_/g, " ")}</span></td>
-                      <td>{displayText(log.module)}</td>
-                      <td>{log.target_type ? `${log.target_type}${log.target_id ? ` #${log.target_id}` : ""}` : "—"}</td>
-                      <td>{displayText(log.details)}</td>
+                      <td><span className={getAuditActionClass(log.action)}>{log.action.replace(/_/g, " ")}</span></td>
+                      <td><span className="audit-module">{displayText(log.module)}</span></td>
+                      <td>{log.target_type ? <span className="audit-target">{log.target_type}{log.target_id ? ` #${log.target_id}` : ""}</span> : "—"}</td>
+                      <td><span className="audit-details">{displayText(log.details)}</span></td>
                     </tr>
                   )) : (
                     <tr>
@@ -3250,6 +3300,44 @@ export default function Home() {
                 </tbody>
               </table>
             </div>
+
+            {filteredAuditLogs.length > 0 && (
+              <div className="audit-pagination">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setAuditPage((page) => Math.max(1, page - 1))}
+                  disabled={auditPage <= 1 || auditLoading}
+                >
+                  Previous
+                </button>
+                <div className="audit-page-numbers">
+                  {Array.from({ length: auditTotalPages }, (_, index) => index + 1)
+                    .slice(
+                      Math.max(0, Math.min(auditPage - 3, auditTotalPages - 5)),
+                      Math.min(auditTotalPages, Math.max(5, auditPage + 2))
+                    )
+                    .map((page) => (
+                      <button
+                        type="button"
+                        key={page}
+                        className={page === auditPage ? "audit-page-button active" : "audit-page-button"}
+                        onClick={() => setAuditPage(page)}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                </div>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setAuditPage((page) => Math.min(auditTotalPages, page + 1))}
+                  disabled={auditPage >= auditTotalPages || auditLoading}
+                >
+                  Next
+                </button>
+              </div>
+            )}
 
             <div className="role-permission-note">
               <strong>Audit policy</strong>
