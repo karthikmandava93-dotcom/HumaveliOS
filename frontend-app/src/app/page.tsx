@@ -172,6 +172,18 @@ type AppUser = {
   updated_at: string;
 };
 
+type AuditLog = {
+  id: number;
+  actor_user_id: number | null;
+  actor_email: string;
+  action: string;
+  module: string;
+  target_type: string | null;
+  target_id: string | null;
+  details: string | null;
+  created_at: string;
+};
+
 type UserForm = {
   email: string;
   password: string;
@@ -582,6 +594,7 @@ const NAV_ITEMS = [
 { id: "recruitment", label: "Recruitment", icon: "\u2197", description: "Candidates, pipeline and funnel" },
 { id: "lifecycle", label: "Lifecycle", icon: "\u21BB", description: "Lifecycle, retention and exits" },
 { id: "users", label: "Users & Roles", icon: "\u2699", description: "Manage accounts and access levels" },
+{ id: "audit", label: "Activity Logs", icon: "\u2637", description: "Review administrative activity history" },
 ] as const;
 
 type ViewId = (typeof NAV_ITEMS)[number]["id"];
@@ -736,6 +749,36 @@ export default function Home() {
   ] = useState<AppUser[]>([]);
 
   const [
+    auditLogs,
+    setAuditLogs,
+  ] = useState<AuditLog[]>([]);
+
+  const [
+    auditLoading,
+    setAuditLoading,
+  ] = useState(false);
+
+  const [
+    auditError,
+    setAuditError,
+  ] = useState("");
+
+  const [
+    auditSearch,
+    setAuditSearch,
+  ] = useState("");
+
+  const [
+    auditActionFilter,
+    setAuditActionFilter,
+  ] = useState("All");
+
+  const [
+    auditModuleFilter,
+    setAuditModuleFilter,
+  ] = useState("All");
+
+  const [
     showUserModal,
     setShowUserModal,
   ] = useState(false);
@@ -840,14 +883,36 @@ export default function Home() {
 
       if (role === "admin") {
         setUsers(await apiRequest<AppUser[]>("/users"));
+        await loadAuditLogs();
       } else {
         setUsers([]);
+        setAuditLogs([]);
       }
     } catch (err) {
       console.error("HumaveliOS API error:", err);
       setError(err instanceof Error ? `${err.message} — API: ${API_URL}` : `Unable to connect to HumaveliOS API — API: ${API_URL}`);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadAuditLogs() {
+    if (authUser?.role !== "admin") {
+      setAuditLogs([]);
+      return;
+    }
+
+    try {
+      setAuditLoading(true);
+      setAuditError("");
+      const logs = await apiRequest<AuditLog[]>("/audit-logs?skip=0&limit=200");
+      setAuditLogs(logs);
+    } catch (err) {
+      setAuditError(
+        err instanceof Error ? err.message : "Unable to load activity logs."
+      );
+    } finally {
+      setAuditLoading(false);
     }
   }
 
@@ -860,6 +925,7 @@ export default function Home() {
       setAnalytics(null);
       setCandidates([]);
       setUsers([]);
+      setAuditLogs([]);
     } catch (err) {
       setEmployees([]);
       setError(err instanceof Error ? err.message : "Unable to load your employee profile.");
@@ -1765,6 +1831,7 @@ export default function Home() {
       setUsers((current) => [...current, created]);
       setUserForm({ ...EMPTY_USER_FORM });
       setShowUserModal(false);
+      await loadAuditLogs();
     } catch (err) {
       setUserError(err instanceof Error ? err.message : "Unable to create user.");
     } finally {
@@ -1781,6 +1848,7 @@ export default function Home() {
         body: JSON.stringify(changes),
       });
       setUsers((current) => current.map((item) => item.id === saved.id ? saved : item));
+      await loadAuditLogs();
     } catch (err) {
       setUserError(err instanceof Error ? err.message : "Unable to update user.");
     }
@@ -1804,6 +1872,7 @@ export default function Home() {
         method: "DELETE",
       });
       setUsers((current) => current.filter((item) => item.id !== user.id));
+      await loadAuditLogs();
     } catch (err) {
       setUserError(err instanceof Error ? err.message : "Unable to delete user.");
     } finally {
@@ -1820,11 +1889,60 @@ export default function Home() {
         body: JSON.stringify({ employee_id: employeeId ? Number(employeeId) : null }),
       });
       setUsers((current) => current.map((item) => item.id === saved.id ? saved : item));
+      await loadAuditLogs();
     } catch (err) {
       setUserError(err instanceof Error ? err.message : "Unable to link employee profile.");
       setUsers((current) => [...current]);
     }
   }
+
+  const auditActions = useMemo(
+    () => Array.from(new Set(auditLogs.map((log) => log.action))).sort(),
+    [auditLogs]
+  );
+
+  const auditModules = useMemo(
+    () => Array.from(new Set(auditLogs.map((log) => log.module))).sort(),
+    [auditLogs]
+  );
+
+  const filteredAuditLogs = useMemo(() => {
+    const query = auditSearch.trim().toLowerCase();
+
+    return auditLogs.filter((log) => {
+      const matchesAction =
+        auditActionFilter === "All" || log.action === auditActionFilter;
+      const matchesModule =
+        auditModuleFilter === "All" || log.module === auditModuleFilter;
+
+      const searchable = [
+        log.actor_email,
+        log.action,
+        log.module,
+        log.target_type ?? "",
+        log.target_id ?? "",
+        log.details ?? "",
+      ].join(" ").toLowerCase();
+
+      return matchesAction && matchesModule && (!query || searchable.includes(query));
+    });
+  }, [auditLogs, auditSearch, auditActionFilter, auditModuleFilter]);
+
+
+  function formatDateTime(value: string | null | undefined) {
+    if (!value) return "Not provided";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "Not provided";
+
+    return new Intl.DateTimeFormat("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(parsed);
+  }
+
 
   /* ==========================================================
      BAR WIDTH
@@ -1941,6 +2059,7 @@ export default function Home() {
           <nav className="sidebar-nav" aria-label="HumaveliOS navigation">
             {NAV_ITEMS.filter((item) => {
               const role = authUser?.role || "employee";
+              if (item.id === "audit") return role === "admin";
               if (role === "admin" || role === "hr") return true;
               if (role === "manager") return ["overview", "employees", "analytics"].includes(item.id);
               return false;
@@ -3036,6 +3155,101 @@ export default function Home() {
           {/* ==================================================
               EMPLOYEE MANAGEMENT
               ================================================== */}
+
+          <section className={`panel view-section ${activeView === "audit" ? "view-section-active" : "view-section-hidden"}`}>
+            <div className="panel-header">
+              <div>
+                <h2>Activity Logs</h2>
+                <p>Read-only administrative history for authentication and workspace changes.</p>
+              </div>
+              <span className="employee-count">{auditLogs.length} recorded</span>
+            </div>
+
+            {auditError && (
+              <div className="error-message compact-error">
+                <strong>Activity logs</strong>
+                <span>{auditError}</span>
+                <button type="button" onClick={() => setAuditError("")}>Dismiss</button>
+              </div>
+            )}
+
+            <div className="filters">
+              <div className="search-box">
+                <span>⌕</span>
+                <input
+                  type="text"
+                  placeholder="Search user, action, target or details..."
+                  value={auditSearch}
+                  onChange={(event) => setAuditSearch(event.target.value)}
+                />
+              </div>
+
+              <select value={auditModuleFilter} onChange={(event) => setAuditModuleFilter(event.target.value)}>
+                <option value="All">All Modules</option>
+                {auditModules.map((module) => <option value={module} key={module}>{module}</option>)}
+              </select>
+
+              <select value={auditActionFilter} onChange={(event) => setAuditActionFilter(event.target.value)}>
+                <option value="All">All Actions</option>
+                {auditActions.map((action) => <option value={action} key={action}>{action}</option>)}
+              </select>
+
+              <button type="button" className="secondary-button" onClick={loadAuditLogs} disabled={auditLoading}>
+                {auditLoading ? "Loading..." : "Refresh Logs"}
+              </button>
+            </div>
+
+            <div className="audit-summary">
+              <strong>{filteredAuditLogs.length}</strong>
+              <span>activity record{filteredAuditLogs.length === 1 ? "" : "s"} shown</span>
+            </div>
+
+            <div className="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date / Time</th>
+                    <th>User</th>
+                    <th>Action</th>
+                    <th>Module</th>
+                    <th>Target</th>
+                    <th>Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredAuditLogs.length ? filteredAuditLogs.map((log) => (
+                    <tr key={log.id}>
+                      <td>{formatDateTime(log.created_at)}</td>
+                      <td>
+                        <div className="employee-cell">
+                          <div className="avatar">{displayText(log.actor_email, "?").charAt(0).toUpperCase()}</div>
+                          <div>
+                            <div className="employee-name">{displayText(log.actor_email, "System")}</div>
+                            <div className="employee-meta">{log.actor_user_id ? `User #${log.actor_user_id}` : "No user ID"}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td><span className="candidate-stage stage-interview">{log.action.replace(/_/g, " ")}</span></td>
+                      <td>{displayText(log.module)}</td>
+                      <td>{log.target_type ? `${log.target_type}${log.target_id ? ` #${log.target_id}` : ""}` : "—"}</td>
+                      <td>{displayText(log.details)}</td>
+                    </tr>
+                  )) : (
+                    <tr>
+                      <td colSpan={6} className="empty-state">
+                        {auditLoading ? "Loading activity history..." : "No activity records match the current filters."}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="role-permission-note">
+              <strong>Audit policy</strong>
+              <span>Activity Logs are read-only and available only to administrators. Password values are never stored in the activity details.</span>
+            </div>
+          </section>
 
           <section className={`panel users-panel view-section ${activeView === "users" ? "view-section-active" : "view-section-hidden"}`}>
             <div className="panel-header"><div><h2>Users & Roles</h2><p>Create accounts and control access to HumaveliOS modules.</p></div><button type="button" className="save-button" onClick={() => { setUserError(""); setUserForm({ ...EMPTY_USER_FORM }); setShowUserModal(true); }}>+ Add User</button></div>
