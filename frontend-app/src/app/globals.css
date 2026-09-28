@@ -2342,3 +2342,169 @@ td {
   object-fit: cover;
   border-radius: inherit;
 }
+
+/* ==========================================================
+   AUDIT LOGS
+   ========================================================== */
+
+.audit-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid #e6ebf2;
+  border-radius: 9px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.audit-summary > div {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.audit-summary strong {
+  color: #172033;
+  font-size: 18px;
+}
+
+.audit-datetime {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.audit-datetime strong {
+  color: #334155;
+  font-size: 11px;
+}
+
+.audit-datetime span {
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.audit-action,
+.audit-module,
+.audit-target,
+.audit-details {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+}
+
+.audit-action {
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.audit-action-success {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.audit-action-info {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.audit-action-muted {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.audit-action-attention {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.audit-module {
+  padding: 4px 7px;
+  border: 1px solid #e5e9f0;
+  border-radius: 6px;
+  background: #fff;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.audit-target,
+.audit-details {
+  color: #475569;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.audit-details {
+  max-width: 290px;
+}
+
+.audit-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.audit-page-numbers {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.audit-page-button {
+  min-width: 32px;
+  height: 32px;
+  border: 1px solid #dbe3ef;
+  border-radius: 7px;
+  padding: 0 8px;
+  background: #fff;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.audit-page-button:hover {
+  background: #f8fafc;
+}
+
+.audit-page-button.active {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
+@media (max-width: 850px) {
+  .audit-details {
+    max-width: 210px;
+  }
+}
+
+@media (max-width: 650px) {
+  .audit-summary,
+  .audit-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .audit-page-numbers {
+    order: -1;
+  }
+
+  .audit-details {
+    max-width: 170px;
+  }
+}
