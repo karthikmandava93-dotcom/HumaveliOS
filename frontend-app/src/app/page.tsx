@@ -1085,10 +1085,16 @@ export default function Home() {
   }
 
 
-  function handleLogout() {
-    localStorage.removeItem(AUTH_TOKEN_KEY);
-    localStorage.removeItem(AUTH_USER_KEY);
-    window.location.href = "/login";
+  async function handleLogout() {
+    try {
+      await apiRequest("/auth/logout", { method: "POST" });
+    } catch (err) {
+      console.error("Logout activity logging error:", err);
+    } finally {
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      localStorage.removeItem(AUTH_USER_KEY);
+      window.location.href = "/login";
+    }
   }
 
 
