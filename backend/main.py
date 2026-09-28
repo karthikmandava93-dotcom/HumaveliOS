@@ -473,6 +473,20 @@ def auth_me(request: Request):
     return request.state.user
 
 
+@app.post("/auth/logout")
+def logout(request: Request, db: Session = Depends(get_db)):
+    log_audit(
+        db,
+        request,
+        "LOGOUT",
+        "Authentication",
+        target_type="User",
+        target_id=request.state.user.get("sub"),
+        details="User logged out",
+    )
+    return {"message": "Logged out successfully"}
+
+
 @app.get("/audit-logs", response_model=list[AuditLogResponse])
 def get_audit_logs(
     request: Request,
