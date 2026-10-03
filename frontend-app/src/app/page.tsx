@@ -1400,6 +1400,7 @@ const [
     }
   }
   function openGoalModal() {
+    setEditingGoal(null);
     setGoalForm({
       ...EMPTY_GOAL_FORM,
     });
@@ -1413,6 +1414,7 @@ const [
 
     setShowGoalModal(false);
     setGoalFormError("");
+    setEditingGoal(null);
   }
 
   async function handleGoalSave(
@@ -1482,6 +1484,7 @@ const [
 
       await loadGoals();
       setShowGoalModal(false);
+      setEditingGoal(null);
       setGoalForm({
         ...EMPTY_GOAL_FORM,
       });
@@ -3824,6 +3827,7 @@ const [
                       <th>Progress</th>
                       <th>Status</th>
                       <th>Due Date</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
 
@@ -3893,6 +3897,33 @@ const [
                             {goal.due_date
                               ? formatDate(goal.due_date)
                               : "No due date"}
+                          </td>
+
+                          <td>
+                            <div className="row-actions">
+                              <button
+                                type="button"
+                                className="edit-button"
+                                onClick={() => openEditGoalModal(goal)}
+                              >
+                                Edit
+                              </button>
+
+                              {(authUser?.role === "admin" ||
+                                authUser?.role === "hr" ||
+                                authUser?.role === "manager") && (
+                                <button
+                                  type="button"
+                                  className="delete-button"
+                                  onClick={() => handleGoalDelete(goal.id)}
+                                  disabled={deletingGoalId === goal.id}
+                                >
+                                  {deletingGoalId === goal.id
+                                    ? "Deleting..."
+                                    : "Delete"}
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -4792,7 +4823,11 @@ const [
           <div className="modal">
             <div className="modal-header">
               <div>
-                <h2>Create Performance Goal</h2>
+                <h2>
+                  {editingGoal
+                    ? "Edit Performance Goal"
+                    : "Create Performance Goal"}
+                </h2>
                 <p>
                   Assign and track a goal for an employee.
                 </p>
@@ -4815,7 +4850,13 @@ const [
               </div>
             )}
 
-            <form onSubmit={handleGoalSave}>
+            <form
+              onSubmit={
+                editingGoal
+                  ? handleGoalUpdate
+                  : handleGoalSave
+              }
+            >
               <div className="form-grid">
 
                 <div className="form-field">
@@ -5019,8 +5060,8 @@ const [
                   disabled={goalSaving}
                 >
                   {goalSaving
-                    ? "Creating..."
-                    : "Create Goal"}
+                    ? (editingGoal ? "Saving..." : "Creating...")
+                    : (editingGoal ? "Save Changes" : "Create Goal")}
                 </button>
               </div>
             </form>
