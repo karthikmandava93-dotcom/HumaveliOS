@@ -832,6 +832,11 @@ export default function Home() {
   ] = useState("");
 
   const [
+    goalUpdatingId,
+    setGoalUpdatingId,
+  ] = useState<number | null>(null);
+
+  const [
     editingGoal,
     setEditingGoal,
   ] = useState<PerformanceGoal | null>(null);
@@ -1611,6 +1616,51 @@ const [
     }
   }
 
+
+  async function handleEmployeeGoalUpdate(
+    goalId: number,
+    progress: number,
+    status: string
+  ) {
+    if (Number.isNaN(progress) || progress < 0 || progress > 100) {
+      setGoalsError("Progress must be between 0 and 100.");
+      return;
+    }
+
+    if (status === "Completed" && progress !== 100) {
+      setGoalsError("A completed goal must have 100% progress.");
+      return;
+    }
+
+    setGoalUpdatingId(goalId);
+    setGoalsError("");
+
+    try {
+      await apiRequest<PerformanceGoal>(
+        `/goals/${goalId}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            progress,
+            status,
+          }),
+        }
+      );
+
+      await loadGoals();
+    } catch (err) {
+      setGoalsError(
+        err instanceof Error
+          ? err.message
+          : "Unable to update your goal."
+      );
+    } finally {
+      setGoalUpdatingId(null);
+    }
+  }
 
   function openAddModal() {
 
