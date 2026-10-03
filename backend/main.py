@@ -15,7 +15,15 @@ from pydantic import BaseModel, ConfigDict, EmailStr
 from sqlalchemy.orm import Session
 
 from database import Base, SessionLocal, engine, get_db
-from models import AuditLog, Candidate, Employee, EmployeeLifecycle, User, UserEmployeeLink
+from models import (
+    AuditLog,
+    Candidate,
+    Employee,
+    EmployeeLifecycle,
+    PerformanceGoal,
+    User,
+    UserEmployeeLink,
+)
 
 
 # ============================================================
@@ -211,22 +219,37 @@ async def authentication_middleware(request, call_next):
         role = user.role
         request.state.user = {"sub": str(user.id), "email": user.email, "role": role}
 
-    allowed = True
+        allowed = True
+
     if path.startswith("/audit-logs"):
         allowed = role == "admin"
+
     elif path.startswith("/users"):
         allowed = role == "admin"
+
     elif path.startswith("/candidates") or path.startswith("/recruitment"):
         allowed = role in {"admin", "hr"}
+
+    elif path.startswith("/goals"):
+        if request.method == "GET":
+            allowed = role in {"admin", "hr", "manager", "employee"}
+        elif request.method in {"PUT", "PATCH"}:
+            allowed = role in {"admin", "hr", "manager", "employee"}
+        else:
+            allowed = role in {"admin", "hr", "manager"}
+
     elif path.startswith("/analytics"):
         allowed = role in {"admin", "hr", "manager"}
+
     elif path == "/employees/me":
         allowed = True
+
     elif "/lifecycle" in path or path.startswith("/lifecycle"):
         if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
             allowed = role in {"admin", "hr"}
         else:
             allowed = role in {"admin", "hr", "manager"}
+
     elif path.startswith("/employees"):
         if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
             allowed = role in {"admin", "hr"}
@@ -373,11 +396,64 @@ class EmployeeLifecycleResponse(BaseModel):
     updated_at: Optional[datetime] = None
 
 
-class EmployeeLifecycleUpdate(BaseModel):
-    lifecycle_status: str = "Active"
-    exit_date: Optional[date] = None
-    exit_reason: Optional[str] = None
-    exit_notes: Optional[str] = None
+# ============================================================
+# PERFORMANCE MANAGEMENT & GOALS
+# ============================================================
+
+GOAL_STATUSES = [
+    "Not Started",
+    "In Progress",
+    "Completed",
+    "On Hold",
+]
+
+GOAL_PRIORITIES = [
+    "Low",
+    "Medium",
+    "High",
+]
+
+
+class PerformanceGoalCreate(BaseModel):
+    employee_id: int
+    title: str
+    description: Optional[str] = None
+    category: str = "General"
+    cycle: str = "2026"
+    due_date: Optional[date] = None
+    progress: int = 0
+    status: str = "Not Started"
+    priority: str = "Medium"
+
+
+class PerformanceGoalUpdate(BaseModel):
+    employee_id: Optional[int] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    cycle: Optional[str] = None
+    due_date: Optional[date] = None
+    progress: Optional[int] = None
+    status: Optional[str] = None
+    priority: Optional[str] = None
+
+
+class PerformanceGoalResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    employee_id: int
+    title: str
+    description: Optional[str] = None
+    category: str
+    cycle: str
+    due_date: Optional[datetime] = None
+    progress: int
+    status: str
+    priority: str
+    created_by_user_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
 
 
 LIFECYCLE_STATUSES = [
@@ -602,7 +678,28 @@ def log_audit(
         db.commit()
     except Exception:
         db.rollback()
+def get_linked_employee_id(request: Request, db: Session) -> Optional[int]:
+    """Resolve the employee profile linked to the current user."""
+    user_id = int(request.state.user["sub"])
 
+    link = (
+        db.query(UserEmployeeLink)
+        .filter(UserEmployeeLink.user_id == user_id)
+        .first()
+    )
+
+    if link:
+        return link.employee_id
+
+    email = str(request.state.user.get("email", "")).strip().lower()
+
+    employee = (
+        db.query(Employee)
+        .filter(Employee.email == email)
+        .first()
+    )
+
+    return employee.id if employee else None
 
 @app.get("/users", response_model=list[UserResponse])
 def list_users(request: Request, db: Session = Depends(get_db)):
@@ -825,6 +922,487 @@ def get_my_employee_profile(request: Request, db: Session = Depends(get_db)):
     return employee
 
 
+# ============================================================
+# PERFORMANCE MANAGEMENT & GOALS API
+# ============================================================
+
+def validate_goal_values(
+    *,
+    progress: int,
+    status: str,
+    priority: str,
+) -> None:
+    if progress < 0 or progress > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="Goal progress must be between 0 and 100",
+        )
+
+    if status not in GOAL_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid goal status. Choose one of: {', '.join(GOAL_STATUSES)}",
+        )
+
+    if priority not in GOAL_PRIORITIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid goal priority. Choose one of: {', '.join(GOAL_PRIORITIES)}",
+        )
+
+    if status == "Completed" and progress != 100:
+        raise HTTPException(
+            status_code=400,
+            detail="A completed goal must have 100% progress",
+        )
+
+
+def get_goal_or_404(goal_id: int, db: Session) -> PerformanceGoal:
+    goal = (
+        db.query(PerformanceGoal)
+        .filter(PerformanceGoal.id == goal_id)
+        .first()
+    )
+
+    if not goal:
+        raise HTTPException(
+            status_code=404,
+            detail="Performance goal not found",
+        )
+
+    return goal
+
+
+@app.get(
+    "/goals",
+    response_model=list[PerformanceGoalResponse],
+)
+def get_goals(
+    request: Request,
+    employee_id: Optional[int] = Query(default=None),
+    cycle: Optional[str] = Query(default=None),
+    status: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    role = request.state.user.get("role")
+
+    query = (
+        db.query(PerformanceGoal)
+        .order_by(
+            PerformanceGoal.created_at.desc(),
+            PerformanceGoal.id.desc(),
+        )
+    )
+
+    if role == "employee":
+        linked_employee_id = get_linked_employee_id(request, db)
+
+        if linked_employee_id is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No employee profile is linked to this account",
+            )
+
+        query = query.filter(
+            PerformanceGoal.employee_id == linked_employee_id
+        )
+    elif employee_id is not None:
+        query = query.filter(
+            PerformanceGoal.employee_id == employee_id
+        )
+
+    if cycle:
+        query = query.filter(
+            PerformanceGoal.cycle == cycle
+        )
+
+    if status and status != "All":
+        query = query.filter(
+            PerformanceGoal.status == status
+        )
+
+    return query.all()
+
+
+@app.get("/goals/summary")
+def get_goals_summary(
+    request: Request,
+    employee_id: Optional[int] = Query(default=None),
+    cycle: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    role = request.state.user.get("role")
+
+    query = db.query(PerformanceGoal)
+
+    if role == "employee":
+        linked_employee_id = get_linked_employee_id(request, db)
+
+        if linked_employee_id is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No employee profile is linked to this account",
+            )
+
+        query = query.filter(
+            PerformanceGoal.employee_id == linked_employee_id
+        )
+    elif employee_id is not None:
+        query = query.filter(
+            PerformanceGoal.employee_id == employee_id
+        )
+
+    if cycle:
+        query = query.filter(
+            PerformanceGoal.cycle == cycle
+        )
+
+    goals = query.all()
+
+    total = len(goals)
+    completed = sum(
+        1 for goal in goals
+        if goal.status == "Completed"
+    )
+    in_progress = sum(
+        1 for goal in goals
+        if goal.status == "In Progress"
+    )
+    not_started = sum(
+        1 for goal in goals
+        if goal.status == "Not Started"
+    )
+    on_hold = sum(
+        1 for goal in goals
+        if goal.status == "On Hold"
+    )
+
+    average_progress = (
+        round(
+            sum(goal.progress for goal in goals) / total,
+            1,
+        )
+        if total
+        else 0
+    )
+
+    return {
+        "total_goals": total,
+        "completed_goals": completed,
+        "in_progress_goals": in_progress,
+        "not_started_goals": not_started,
+        "on_hold_goals": on_hold,
+        "average_progress": average_progress,
+    }
+
+
+@app.post(
+    "/goals",
+    response_model=PerformanceGoalResponse,
+    status_code=201,
+)
+def create_goal(
+    goal_data: PerformanceGoalCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    role = request.state.user.get("role")
+
+    if role not in {"admin", "hr", "manager"}:
+        raise HTTPException(
+            status_code=403,
+            detail="Only administrators, HR and managers can create goals",
+        )
+
+    employee = (
+        db.query(Employee)
+        .filter(Employee.id == goal_data.employee_id)
+        .first()
+    )
+
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail="Employee profile not found",
+        )
+
+    title = goal_data.title.strip()
+    category = goal_data.category.strip()
+    cycle = goal_data.cycle.strip()
+
+    if not title:
+        raise HTTPException(
+            status_code=400,
+            detail="Goal title is required",
+        )
+
+    if not category:
+        raise HTTPException(
+            status_code=400,
+            detail="Goal category is required",
+        )
+
+    if not cycle:
+        raise HTTPException(
+            status_code=400,
+            detail="Goal cycle is required",
+        )
+
+    validate_goal_values(
+        progress=goal_data.progress,
+        status=goal_data.status,
+        priority=goal_data.priority,
+    )
+
+    due_datetime = (
+        datetime.combine(
+            goal_data.due_date,
+            datetime.min.time(),
+        )
+        if goal_data.due_date
+        else None
+    )
+
+    goal = PerformanceGoal(
+        employee_id=employee.id,
+        title=title,
+        description=goal_data.description,
+        category=category,
+        cycle=cycle,
+        due_date=due_datetime,
+        progress=goal_data.progress,
+        status=goal_data.status,
+        priority=goal_data.priority,
+        created_by_user_id=int(request.state.user["sub"]),
+    )
+
+    db.add(goal)
+    db.commit()
+    db.refresh(goal)
+
+    log_audit(
+        db,
+        request,
+        "GOAL_CREATED",
+        "Performance & Goals",
+        target_type="PerformanceGoal",
+        target_id=goal.id,
+        details=(
+            f"Created goal '{goal.title}' for employee "
+            f"{employee.id}"
+        ),
+    )
+
+    return goal
+
+
+@app.put(
+    "/goals/{goal_id}",
+    response_model=PerformanceGoalResponse,
+)
+def update_goal(
+    goal_id: int,
+    goal_data: PerformanceGoalUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    role = request.state.user.get("role")
+    goal = get_goal_or_404(goal_id, db)
+
+    employee_id_for_access = goal.employee_id
+
+    if role == "employee":
+        linked_employee_id = get_linked_employee_id(request, db)
+
+        if linked_employee_id is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No employee profile is linked to this account",
+            )
+
+        if goal.employee_id != linked_employee_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Employees can only update their own goals",
+            )
+
+        supplied_fields = set(
+            goal_data.model_dump(exclude_unset=True).keys()
+        )
+
+        allowed_employee_fields = {
+            "progress",
+            "status",
+        }
+
+        if not supplied_fields.issubset(
+            allowed_employee_fields
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Employees can only update goal "
+                    "progress and status"
+                ),
+            )
+
+    elif role not in {"admin", "hr", "manager"}:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have permission to update goals",
+        )
+
+    updates = goal_data.model_dump(
+        exclude_unset=True
+    )
+
+    if "employee_id" in updates:
+        new_employee = (
+            db.query(Employee)
+            .filter(Employee.id == updates["employee_id"])
+            .first()
+        )
+
+        if not new_employee:
+            raise HTTPException(
+                status_code=404,
+                detail="Employee profile not found",
+            )
+
+        goal.employee_id = new_employee.id
+        employee_id_for_access = new_employee.id
+
+    if "title" in updates:
+        title = (
+            updates["title"].strip()
+            if updates["title"] is not None
+            else ""
+        )
+
+        if not title:
+            raise HTTPException(
+                status_code=400,
+                detail="Goal title cannot be empty",
+            )
+
+        goal.title = title
+
+    if "description" in updates:
+        goal.description = updates["description"]
+
+    if "category" in updates:
+        category = (
+            updates["category"].strip()
+            if updates["category"] is not None
+            else ""
+        )
+
+        if not category:
+            raise HTTPException(
+                status_code=400,
+                detail="Goal category cannot be empty",
+            )
+
+        goal.category = category
+
+    if "cycle" in updates:
+        cycle = (
+            updates["cycle"].strip()
+            if updates["cycle"] is not None
+            else ""
+        )
+
+        if not cycle:
+            raise HTTPException(
+                status_code=400,
+                detail="Goal cycle cannot be empty",
+            )
+
+        goal.cycle = cycle
+
+    if "due_date" in updates:
+        goal.due_date = (
+            datetime.combine(
+                updates["due_date"],
+                datetime.min.time(),
+            )
+            if updates["due_date"]
+            else None
+        )
+
+    if "progress" in updates:
+        goal.progress = updates["progress"]
+
+    if "status" in updates:
+        goal.status = updates["status"]
+
+    if "priority" in updates:
+        goal.priority = updates["priority"]
+
+    validate_goal_values(
+        progress=goal.progress,
+        status=goal.status,
+        priority=goal.priority,
+    )
+
+    db.commit()
+    db.refresh(goal)
+
+    log_audit(
+        db,
+        request,
+        "GOAL_UPDATED",
+        "Performance & Goals",
+        target_type="PerformanceGoal",
+        target_id=goal.id,
+        details=(
+            f"Updated goal '{goal.title}' "
+            f"for employee {employee_id_for_access}"
+        ),
+    )
+
+    return goal
+
+
+@app.delete("/goals/{goal_id}")
+def delete_goal(
+    goal_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    role = request.state.user.get("role")
+
+    if role not in {"admin", "hr", "manager"}:
+        raise HTTPException(
+            status_code=403,
+            detail="Only administrators, HR and managers can delete goals",
+        )
+
+    goal = get_goal_or_404(goal_id, db)
+
+    deleted_title = goal.title
+    deleted_employee_id = goal.employee_id
+
+    db.delete(goal)
+    db.commit()
+
+    log_audit(
+        db,
+        request,
+        "GOAL_DELETED",
+        "Performance & Goals",
+        target_type="PerformanceGoal",
+        target_id=goal_id,
+        details=(
+            f"Deleted goal '{deleted_title}' "
+            f"for employee {deleted_employee_id}"
+        ),
+    )
+
+    return {
+        "message": "Performance goal deleted successfully",
+        "goal_id": goal_id,
+    }
 # ============================================================
 # ROOT
 # ============================================================
