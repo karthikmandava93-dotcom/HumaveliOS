@@ -3706,6 +3706,204 @@ const [
               EMPLOYEE MANAGEMENT
               ================================================== */}
 
+      {/* ======================================================
+          PERFORMANCE & GOALS
+          ====================================================== */}
+
+      <section className={`panel view-section ${activeView === "goals" ? "view-section-active" : "view-section-hidden"}`}>
+        <div className="panel-header">
+          <div>
+            <h2>Performance &amp; Goals</h2>
+            <p>Track employee goals, progress, priorities and performance cycles.</p>
+          </div>
+
+          <div className="management-actions">
+            <span className="employee-count">
+              {goals.length} goal{goals.length === 1 ? "" : "s"}
+            </span>
+
+            {(authUser?.role === "admin" ||
+              authUser?.role === "hr" ||
+              authUser?.role === "manager") && (
+              <button
+                type="button"
+                className="add-button"
+                onClick={openGoalModal}
+              >
+                + Create Goal
+              </button>
+            )}
+          </div>
+        </div>
+
+        {goalsError && (
+          <div className="error-message compact-error">
+            <strong>Performance goals</strong>
+            <span>{goalsError}</span>
+            <button type="button" onClick={() => setGoalsError("")}>
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {goalsLoading ? (
+          <div className="empty-state">
+            Loading performance goals...
+          </div>
+        ) : (
+          <>
+            <div className="stats-grid">
+              <div className="stat-card">
+                <div className="stat-card-top">
+                  <span>Total Goals</span>
+                  <div className="stat-icon blue">◎</div>
+                </div>
+                <strong>{goals.length}</strong>
+                <small>Recorded performance goals</small>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-card-top">
+                  <span>Completed</span>
+                  <div className="stat-icon green">✓</div>
+                </div>
+                <strong>
+                  {goals.filter((goal) => goal.status === "Completed").length}
+                </strong>
+                <small>Goals completed</small>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-card-top">
+                  <span>In Progress</span>
+                  <div className="stat-icon orange">↗</div>
+                </div>
+                <strong>
+                  {goals.filter((goal) => goal.status === "In Progress").length}
+                </strong>
+                <small>Goals currently progressing</small>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-card-top">
+                  <span>Average Progress</span>
+                  <div className="stat-icon blue">%</div>
+                </div>
+                <strong>
+                  {goals.length
+                    ? `${Math.round(
+                        goals.reduce(
+                          (total, goal) => total + goal.progress,
+                          0
+                        ) / goals.length
+                      )}%`
+                    : "0%"}
+                </strong>
+                <small>Across recorded goals</small>
+              </div>
+            </div>
+
+            {goals.length === 0 ? (
+              <div className="empty-state">
+                <strong>No performance goals recorded yet.</strong>
+                <span>
+                  Create goals for employees to start tracking performance
+                  progress in HumaveliOS.
+                </span>
+              </div>
+            ) : (
+              <div className="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Goal</th>
+                      <th>Employee</th>
+                      <th>Category</th>
+                      <th>Cycle</th>
+                      <th>Priority</th>
+                      <th>Progress</th>
+                      <th>Status</th>
+                      <th>Due Date</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {goals.map((goal) => {
+                      const employee = employees.find(
+                        (item) => item.id === goal.employee_id
+                      );
+
+                      return (
+                        <tr key={goal.id}>
+                          <td>
+                            <strong>{goal.title}</strong>
+
+                            {goal.description && (
+                              <div className="table-secondary-text">
+                                {goal.description}
+                              </div>
+                            )}
+                          </td>
+
+                          <td>
+                            {employee
+                              ? displayText(employee.full_name)
+                              : `Employee #${goal.employee_id}`}
+                          </td>
+
+                          <td>{displayText(goal.category)}</td>
+                          <td>{displayText(goal.cycle)}</td>
+
+                          <td>
+                            <span
+                              className={`status-badge ${goal.priority.toLowerCase()}`}
+                            >
+                              {goal.priority}
+                            </span>
+                          </td>
+
+                          <td>
+                            <div className="goal-progress-cell">
+                              <div className="goal-progress-track">
+                                <div
+                                  className="goal-progress-fill"
+                                  style={{
+                                    width: `${Math.max(
+                                      0,
+                                      Math.min(100, goal.progress)
+                                    )}%`,
+                                  }}
+                                />
+                              </div>
+                              <strong>{goal.progress}%</strong>
+                            </div>
+                          </td>
+
+                          <td>
+                            <span
+                              className={`status-badge ${goal.status
+                                .toLowerCase()
+                                .replace(/\s+/g, "-")}`}
+                            >
+                              {goal.status}
+                            </span>
+                          </td>
+
+                          <td>
+                            {goal.due_date
+                              ? formatDate(goal.due_date)
+                              : "No due date"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </section>
           <section className={`panel view-section ${activeView === "audit" ? "view-section-active" : "view-section-hidden"}`}>
             <div className="panel-header">
               <div>
