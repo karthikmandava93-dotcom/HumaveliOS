@@ -183,6 +183,57 @@ type AuditLog = {
   details: string | null;
   created_at: string;
 };
+type PerformanceGoal = {
+  id: number;
+  employee_id: number;
+  title: string;
+  description: string | null;
+  category: string;
+  cycle: string;
+  due_date: string | null;
+  progress: number;
+  status: string;
+  priority: string;
+  created_by_user_id: number | null;
+  created_at: string;
+  updated_at: string;
+};
+type GoalForm = {
+  employee_id: string;
+  title: string;
+  description: string;
+  category: string;
+  cycle: string;
+  due_date: string;
+  progress: string;
+  status: string;
+  priority: string;
+};
+
+const GOAL_STATUSES = [
+  "Not Started",
+  "In Progress",
+  "Completed",
+  "On Hold",
+];
+
+const GOAL_PRIORITIES = [
+  "Low",
+  "Medium",
+  "High",
+];
+
+const EMPTY_GOAL_FORM: GoalForm = {
+  employee_id: "",
+  title: "",
+  description: "",
+  category: "General",
+  cycle: "2026",
+  due_date: "",
+  progress: "0",
+  status: "Not Started",
+  priority: "Medium",
+};
 
 type UserForm = {
   email: string;
@@ -593,6 +644,7 @@ const NAV_ITEMS = [
 { id: "analytics", label: "People Analytics", icon: "\u25D4", description: "Workforce, trends and performance" },
 { id: "recruitment", label: "Recruitment", icon: "\u2197", description: "Candidates, pipeline and funnel" },
 { id: "lifecycle", label: "Lifecycle", icon: "\u21BB", description: "Lifecycle, retention and exits" },
+  { id: "goals", label: "Performance & Goals", icon: "\u2605", description: "Goals, progress and performance management" },
 { id: "users", label: "Users & Roles", icon: "\u2699", description: "Manage accounts and access levels" },
 { id: "audit", label: "Activity Logs", icon: "\u2637", description: "Review administrative activity history" },
 ] as const;
@@ -742,11 +794,57 @@ export default function Home() {
     candidates,
     setCandidates,
   ] = useState<Candidate[]>([]);
+  const [
+    goals,
+    setGoals,
+  ] = useState<PerformanceGoal[]>([]);
 
   const [
-    users,
-    setUsers,
-  ] = useState<AppUser[]>([]);
+    goalsLoading,
+    setGoalsLoading,
+  ] = useState(false);
+
+  const [
+    goalsError,
+    setGoalsError,
+  ] = useState("");
+
+  const [
+    showGoalModal,
+    setShowGoalModal,
+  ] = useState(false);
+
+  const [
+    goalForm,
+    setGoalForm,
+  ] = useState<GoalForm>({
+    ...EMPTY_GOAL_FORM,
+  });
+
+  const [
+    goalSaving,
+    setGoalSaving,
+  ] = useState(false);
+
+  const [
+    goalFormError,
+    setGoalFormError,
+  ] = useState("");
+
+  const [
+    editingGoal,
+    setEditingGoal,
+  ] = useState<PerformanceGoal | null>(null);
+
+  const [
+    deletingGoalId,
+    setDeletingGoalId,
+  ] = useState<number | null>(null);
+const [
+  users,
+  setUsers,
+] = useState<AppUser[]>([]);
+
 
   const [
     auditLogs,
@@ -881,6 +979,7 @@ export default function Home() {
       const analyticsData = await apiRequest<Analytics>("/analytics/summary");
       setEmployees(employeeData);
       setAnalytics(analyticsData);
+            await loadGoals();
 
       if (role === "admin" || role === "hr") {
         setCandidates(await apiRequest<Candidate[]>("/candidates?skip=0&limit=100"));
@@ -922,7 +1021,27 @@ export default function Home() {
       setAuditLoading(false);
     }
   }
+      async function loadGoals() {
+    try {
+      setGoalsLoading(true);
+      setGoalsError("");
 
+      const data = await apiRequest<PerformanceGoal[]>(
+        "/goals"
+      );
+
+      setGoals(data);
+    } catch (err) {
+      setGoalsError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load performance goals."
+      );
+      setGoals([]);
+    } finally {
+      setGoalsLoading(false);
+    }
+  }
   async function loadMyEmployeeProfile() {
     try {
       setLoading(true);
@@ -933,6 +1052,7 @@ export default function Home() {
       setCandidates([]);
       setUsers([]);
       setAuditLogs([]);
+            await loadGoals();    
     } catch (err) {
       setEmployees([]);
       setError(err instanceof Error ? err.message : "Unable to load your employee profile.");
@@ -1277,6 +1397,214 @@ export default function Home() {
       );
     } finally {
       setLifecycleSaving(false);
+    }
+  }
+  function openGoalModal() {
+    setGoalForm({
+      ...EMPTY_GOAL_FORM,
+    });
+
+    setGoalFormError("");
+    setShowGoalModal(true);
+  }
+
+  function closeGoalModal() {
+    if (goalSaving) return;
+
+    setShowGoalModal(false);
+    setGoalFormError("");
+  }
+
+  async function handleGoalSave(
+    event: FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+    setGoalFormError("");
+
+    if (!goalForm.employee_id) {
+      setGoalFormError("Please select an employee.");
+      return;
+    }
+
+    if (!goalForm.title.trim()) {
+      setGoalFormError("Goal title is required.");
+      return;
+    }
+
+    const progress = Number(goalForm.progress);
+
+    if (
+      Number.isNaN(progress) ||
+      progress < 0 ||
+      progress > 100
+    ) {
+      setGoalFormError(
+        "Progress must be between 0 and 100."
+      );
+      return;
+    }
+
+    if (
+      goalForm.status === "Completed" &&
+      progress !== 100
+    ) {
+      setGoalFormError(
+        "A completed goal must have 100% progress."
+      );
+      return;
+    }
+
+    setGoalSaving(true);
+
+    try {
+      await apiRequest<PerformanceGoal>(
+        "/goals",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            employee_id: Number(goalForm.employee_id),
+            title: goalForm.title.trim(),
+            description:
+              goalForm.description.trim() || null,
+            category: goalForm.category.trim() || "General",
+            cycle: goalForm.cycle.trim() || "2026",
+            due_date:
+              goalForm.due_date || null,
+            progress,
+            status: goalForm.status,
+            priority: goalForm.priority,
+          }),
+        }
+      );
+
+      await loadGoals();
+      setShowGoalModal(false);
+      setGoalForm({
+        ...EMPTY_GOAL_FORM,
+      });
+    } catch (err) {
+      setGoalFormError(
+        err instanceof Error
+          ? err.message
+          : "Unable to save performance goal."
+      );
+    } finally {
+      setGoalSaving(false);
+    }
+  }
+  function openEditGoalModal(goal: PerformanceGoal) {
+    setEditingGoal(goal);
+
+    setGoalForm({
+      employee_id: String(goal.employee_id),
+      title: goal.title,
+      description: goal.description || "",
+      category: goal.category,
+      cycle: goal.cycle,
+      due_date: goal.due_date ? goal.due_date.slice(0, 10) : "",
+      progress: String(goal.progress),
+      status: goal.status,
+      priority: goal.priority,
+    });
+
+    setGoalFormError("");
+    setShowGoalModal(true);
+  }
+
+  async function handleGoalUpdate(
+    event: FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    if (!editingGoal) return;
+
+    setGoalFormError("");
+
+    const progress = Number(goalForm.progress);
+
+    if (Number.isNaN(progress) || progress < 0 || progress > 100) {
+      setGoalFormError("Progress must be between 0 and 100.");
+      return;
+    }
+
+    if (goalForm.status === "Completed" && progress !== 100) {
+      setGoalFormError("A completed goal must have 100% progress.");
+      return;
+    }
+
+    if (!goalForm.title.trim()) {
+      setGoalFormError("Goal title is required.");
+      return;
+    }
+
+    setGoalSaving(true);
+
+    try {
+      await apiRequest<PerformanceGoal>(
+        `/goals/${editingGoal.id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            employee_id: Number(goalForm.employee_id),
+            title: goalForm.title.trim(),
+            description: goalForm.description.trim() || null,
+            category: goalForm.category.trim() || "General",
+            cycle: goalForm.cycle.trim() || "2026",
+            due_date: goalForm.due_date || null,
+            progress,
+            status: goalForm.status,
+            priority: goalForm.priority,
+          }),
+        }
+      );
+
+      await loadGoals();
+
+      setShowGoalModal(false);
+      setEditingGoal(null);
+      setGoalForm({ ...EMPTY_GOAL_FORM });
+    } catch (err) {
+      setGoalFormError(
+        err instanceof Error
+          ? err.message
+          : "Unable to update performance goal."
+      );
+    } finally {
+      setGoalSaving(false);
+    }
+  }
+
+  async function handleGoalDelete(goalId: number) {
+    if (deletingGoalId !== null) return;
+
+    const confirmed = window.confirm(
+      "Delete this performance goal? This action cannot be undone."
+    );
+
+    if (!confirmed) return;
+
+    setDeletingGoalId(goalId);
+
+    try {
+      await apiRequest(`/goals/${goalId}`, {
+        method: "DELETE",
+      });
+
+      await loadGoals();
+    } catch (err) {
+      setGoalsError(
+        err instanceof Error
+          ? err.message
+          : "Unable to delete performance goal."
+      );
+    } finally {
+      setDeletingGoalId(null);
     }
   }
 
@@ -2281,7 +2609,9 @@ export default function Home() {
               const role = authUser?.role || "employee";
               if (item.id === "audit") return role === "admin";
               if (role === "admin" || role === "hr") return true;
-              if (role === "manager") return ["overview", "employees", "analytics"].includes(item.id);
+              if (role === "manager") {
+  return ["overview", "employees", "analytics", "goals"].includes(item.id);
+}
               return false;
             }).map((item) => (
               <button
@@ -4248,7 +4578,257 @@ export default function Home() {
           </div>
         </div>
       )}
+      {/* ======================================================
+          CREATE GOAL MODAL
+          ====================================================== */}
 
+      {showGoalModal && (
+        <div
+          className="modal-overlay"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeGoalModal();
+            }
+          }}
+        >
+          <div className="modal">
+            <div className="modal-header">
+              <div>
+                <h2>Create Performance Goal</h2>
+                <p>
+                  Assign and track a goal for an employee.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="close-button"
+                onClick={closeGoalModal}
+                disabled={goalSaving}
+                aria-label="Close goal form"
+              >
+                ×
+              </button>
+            </div>
+
+            {goalFormError && (
+              <div className="form-error">
+                {goalFormError}
+              </div>
+            )}
+
+            <form onSubmit={handleGoalSave}>
+              <div className="form-grid">
+
+                <div className="form-field">
+                  <label>Employee *</label>
+
+                  <select
+                    value={goalForm.employee_id}
+                    onChange={(event) =>
+                      setGoalForm((current) => ({
+                        ...current,
+                        employee_id: event.target.value,
+                      }))
+                    }
+                    disabled={goalSaving}
+                  >
+                    <option value="">
+                      Select employee
+                    </option>
+
+                    {employees.map((employee) => (
+                      <option
+                        value={employee.id}
+                        key={employee.id}
+                      >
+                        {employee.full_name} · {employee.employee_id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-field">
+                  <label>Goal Title *</label>
+
+                  <input
+                    type="text"
+                    value={goalForm.title}
+                    onChange={(event) =>
+                      setGoalForm((current) => ({
+                        ...current,
+                        title: event.target.value,
+                      }))
+                    }
+                    placeholder="Improve recruitment turnaround time"
+                    disabled={goalSaving}
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label>Category</label>
+
+                  <select
+                    value={goalForm.category}
+                    onChange={(event) =>
+                      setGoalForm((current) => ({
+                        ...current,
+                        category: event.target.value,
+                      }))
+                    }
+                    disabled={goalSaving}
+                  >
+                    <option value="General">General</option>
+                    <option value="Business">Business</option>
+                    <option value="Customer">Customer</option>
+                    <option value="People">People</option>
+                    <option value="Learning">Learning</option>
+                  </select>
+                </div>
+
+                <div className="form-field">
+                  <label>Performance Cycle</label>
+
+                  <input
+                    type="text"
+                    value={goalForm.cycle}
+                    onChange={(event) =>
+                      setGoalForm((current) => ({
+                        ...current,
+                        cycle: event.target.value,
+                      }))
+                    }
+                    placeholder="2026"
+                    disabled={goalSaving}
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label>Priority</label>
+
+                  <select
+                    value={goalForm.priority}
+                    onChange={(event) =>
+                      setGoalForm((current) => ({
+                        ...current,
+                        priority: event.target.value,
+                      }))
+                    }
+                    disabled={goalSaving}
+                  >
+                    {GOAL_PRIORITIES.map((priority) => (
+                      <option
+                        value={priority}
+                        key={priority}
+                      >
+                        {priority}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-field">
+                  <label>Status</label>
+
+                  <select
+                    value={goalForm.status}
+                    onChange={(event) =>
+                      setGoalForm((current) => ({
+                        ...current,
+                        status: event.target.value,
+                      }))
+                    }
+                    disabled={goalSaving}
+                  >
+                    {GOAL_STATUSES.map((status) => (
+                      <option
+                        value={status}
+                        key={status}
+                      >
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-field">
+                  <label>Due Date</label>
+
+                  <input
+                    type="date"
+                    value={goalForm.due_date}
+                    onChange={(event) =>
+                      setGoalForm((current) => ({
+                        ...current,
+                        due_date: event.target.value,
+                      }))
+                    }
+                    disabled={goalSaving}
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label>Progress (%)</label>
+
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={goalForm.progress}
+                    onChange={(event) =>
+                      setGoalForm((current) => ({
+                        ...current,
+                        progress: event.target.value,
+                      }))
+                    }
+                    disabled={goalSaving}
+                  />
+                </div>
+
+              </div>
+
+              <div className="form-field full-field">
+                <label>Description</label>
+
+                <textarea
+                  rows={4}
+                  value={goalForm.description}
+                  onChange={(event) =>
+                    setGoalForm((current) => ({
+                      ...current,
+                      description: event.target.value,
+                    }))
+                  }
+                  placeholder="Describe the expected outcome, success criteria or key deliverables."
+                  disabled={goalSaving}
+                />
+              </div>
+
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="cancel-button"
+                  onClick={closeGoalModal}
+                  disabled={goalSaving}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  className="save-button"
+                  disabled={goalSaving}
+                >
+                  {goalSaving
+                    ? "Creating..."
+                    : "Create Goal"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ======================================================
           ADD / EDIT MODAL
