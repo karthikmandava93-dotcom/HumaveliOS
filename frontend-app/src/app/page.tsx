@@ -2035,33 +2035,205 @@ export default function Home() {
 
   if (authUser?.role === "employee") {
     const employee = employees[0];
+    const profileCompleteness = employee ? getEmployeeCompleteness(employee) : 0;
+
     return (
-      <main className="dashboard">
-        <div className="employee-self-layout">
-          <section className="self-card">
-            <div className="self-brand"><div className="brand-icon"><img src="/humavelios-logo.png" alt="HumaveliOS logo" /></div><div><strong>HumaveliOS</strong><span>People. Work. Intelligence.</span></div></div>
-            <div className="self-heading"><span className="eyebrow">Employee Workspace</span><h1>My Profile</h1><p>View the employee information linked to your work account.</p></div>
-            {loading ? (
-              <div className="message-card">Loading your profile...</div>
-            ) : employee ? (
-              <div className="self-profile-grid">
-                <div><span>Name</span><strong>{employee.full_name}</strong></div>
-                <div><span>Employee ID</span><strong>{employee.employee_id}</strong></div>
-                <div><span>Email</span><strong>{employee.email}</strong></div>
-                <div><span>Department</span><strong>{employee.department}</strong></div>
-                <div><span>Designation</span><strong>{employee.designation}</strong></div>
-                <div><span>Employment Type</span><strong>{employee.employment_type}</strong></div>
-                <div><span>Location</span><strong>{displayText(employee.location)}</strong></div>
-                <div><span>Manager</span><strong>{displayText(employee.manager)}</strong></div>
-                <div><span>Status</span><strong>{employee.status}</strong></div>
-                <div><span>Performance</span><strong>{displayPerformance(employee.performance_score)}</strong></div>
-                <div className="self-profile-wide"><span>Skills</span><strong>{displayText(employee.skills)}</strong></div>
+      <main className="dashboard employee-dashboard">
+        <div className="employee-workspace">
+          <header className="employee-workspace-topbar">
+            <div className="self-brand">
+              <div className="brand-icon">
+                <img src="/humavelios-logo.png" alt="HumaveliOS logo" />
               </div>
-            ) : (
-              <div className="error-message"><strong>No linked employee profile</strong><span>{error || "Ask HR to use the same email on your employee record and user account."}</span></div>
-            )}
-            <button type="button" className="logout-button" onClick={handleLogout}>Logout</button>
-          </section>
+              <div>
+                <strong>HumaveliOS</strong>
+                <span>People. Work. Intelligence.</span>
+              </div>
+            </div>
+
+            <div className="employee-topbar-actions">
+              <div className="employee-account">
+                <div className="account-avatar">
+                  {authUser?.email?.charAt(0).toUpperCase() || "E"}
+                </div>
+                <div>
+                  <strong>{authUser?.email || "Employee"}</strong>
+                  <span>Employee</span>
+                </div>
+              </div>
+              <button type="button" className="sidebar-logout" onClick={handleLogout}>
+                Logout
+              </button>
+            </div>
+          </header>
+
+          {loading ? (
+            <div className="message-card">Loading your Employee Workspace...</div>
+          ) : employee ? (
+            <>
+              <section className="employee-welcome-card">
+                <div>
+                  <span className="eyebrow">Employee Workspace</span>
+                  <h1>Welcome back, {displayText(employee.full_name, "Employee")}</h1>
+                  <p>
+                    Your HumaveliOS workspace brings your employment information,
+                    people data and personal HR snapshot into one place.
+                  </p>
+                </div>
+                <div className="employee-welcome-badge">
+                  <span>Current status</span>
+                  <strong>{displayText(employee.status, "Not provided")}</strong>
+                </div>
+              </section>
+
+              <section className="employee-self-kpi-grid">
+                <div className="employee-self-kpi">
+                  <span>Department</span>
+                  <strong>{displayText(employee.department)}</strong>
+                </div>
+                <div className="employee-self-kpi">
+                  <span>Designation</span>
+                  <strong>{displayText(employee.designation)}</strong>
+                </div>
+                <div className="employee-self-kpi">
+                  <span>Tenure</span>
+                  <strong>{calculateTenure(employee)}</strong>
+                </div>
+                <div className="employee-self-kpi">
+                  <span>Performance</span>
+                  <strong>{displayPerformance(employee.performance_score)}</strong>
+                </div>
+                <div className="employee-self-kpi">
+                  <span>Manager</span>
+                  <strong>{displayText(employee.manager)}</strong>
+                </div>
+                <div className="employee-self-kpi">
+                  <span>Location</span>
+                  <strong>{displayText(employee.location)}</strong>
+                </div>
+              </section>
+
+              <section className="employee-dashboard-grid">
+                <div className="panel employee-profile-card">
+                  <div className="panel-header">
+                    <div>
+                      <h2>My Profile</h2>
+                      <p>Your current employee information</p>
+                    </div>
+                    <span className="employee-count">{profileCompleteness}% complete</span>
+                  </div>
+
+                  <div className="employee-profile-summary">
+                    <div className="employee-profile-avatar">
+                      {displayText(employee.full_name, "?").charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <h3>{displayText(employee.full_name, "Unnamed employee")}</h3>
+                      <p>{displayText(employee.employee_id, "No employee ID")} · {displayText(employee.email, "No email")}</p>
+                    </div>
+                  </div>
+
+                  <div className="self-profile-grid">
+                    <div><span>Employee ID</span><strong>{displayText(employee.employee_id)}</strong></div>
+                    <div><span>Email</span><strong>{displayText(employee.email)}</strong></div>
+                    <div><span>Employment Type</span><strong>{displayText(employee.employment_type)}</strong></div>
+                    <div><span>Date of Joining</span><strong>{formatDate(employee.date_of_joining)}</strong></div>
+                    <div><span>Location</span><strong>{displayText(employee.location)}</strong></div>
+                    <div><span>Manager</span><strong>{displayText(employee.manager)}</strong></div>
+                    <div><span>Status</span><strong>{displayText(employee.status)}</strong></div>
+                    <div><span>Skills</span><strong>{displayText(employee.skills)}</strong></div>
+                  </div>
+                </div>
+
+                <div className="panel employee-snapshot-card">
+                  <div className="panel-header">
+                    <div>
+                      <h2>My HR Snapshot</h2>
+                      <p>Information currently recorded for your account</p>
+                    </div>
+                  </div>
+
+                  <div className="employee-snapshot-list">
+                    <div>
+                      <span>Lifecycle</span>
+                      <strong>Available through your employee record</strong>
+                    </div>
+                    <div>
+                      <span>Performance</span>
+                      <strong>{displayPerformance(employee.performance_score)}</strong>
+                    </div>
+                    <div>
+                      <span>Profile completeness</span>
+                      <strong>{profileCompleteness}%</strong>
+                    </div>
+                    <div>
+                      <span>Data source</span>
+                      <strong>HumaveliOS employee profile</strong>
+                    </div>
+                  </div>
+
+                  <div className="employee-data-note">
+                    <strong>Data transparency</strong>
+                    <span>
+                      This workspace shows information currently stored in HumaveliOS.
+                      It does not infer missing HR or employment information.
+                    </span>
+                  </div>
+                </div>
+              </section>
+
+              <section className="panel employee-modules-panel">
+                <div className="panel-header">
+                  <div>
+                    <h2>Employee Services</h2>
+                    <p>Self-service modules planned for your workspace</p>
+                  </div>
+                  <span className="employee-count">Coming next</span>
+                </div>
+
+                <div className="employee-module-grid">
+                  <div className="employee-module-card">
+                    <div className="employee-module-icon">◷</div>
+                    <div><strong>Leave</strong><span>Leave balance and requests</span></div>
+                    <small>Coming next</small>
+                  </div>
+                  <div className="employee-module-card">
+                    <div className="employee-module-icon">✓</div>
+                    <div><strong>Attendance</strong><span>Attendance and work-time summary</span></div>
+                    <small>Coming next</small>
+                  </div>
+                  <div className="employee-module-card">
+                    <div className="employee-module-icon">◎</div>
+                    <div><strong>Goals & Performance</strong><span>Goals, reviews and performance history</span></div>
+                    <small>Coming next</small>
+                  </div>
+                  <div className="employee-module-card">
+                    <div className="employee-module-icon">▤</div>
+                    <div><strong>Documents</strong><span>HR documents and employee records</span></div>
+                    <small>Coming next</small>
+                  </div>
+                </div>
+              </section>
+
+              <div className="employee-workspace-footer">
+                <span>HumaveliOS · People. Work. Intelligence.</span>
+                <button type="button" className="secondary-button" onClick={loadMyEmployeeProfile} disabled={loading}>
+                  {loading ? "Refreshing..." : "Refresh My Profile"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <section className="panel employee-missing-profile">
+              <div className="employee-missing-icon">!</div>
+              <div>
+                <h2>No linked employee profile</h2>
+                <p>{error || "Ask HR to link your work account to your employee profile."}</p>
+              </div>
+              <button type="button" className="secondary-button" onClick={loadMyEmployeeProfile} disabled={loading}>
+                Retry
+              </button>
+            </section>
+          )}
         </div>
       </main>
     );
