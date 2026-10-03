@@ -2583,10 +2583,108 @@ const [
                     <div><strong>Attendance</strong><span>Attendance and work-time summary</span></div>
                     <small>Coming next</small>
                   </div>
-                  <div className="employee-module-card">
+                                    <div className="employee-module-card employee-goals-module">
                     <div className="employee-module-icon">◎</div>
-                    <div><strong>Goals & Performance</strong><span>Goals, reviews and performance history</span></div>
-                    <small>Coming next</small>
+
+                    <div className="employee-goals-module-content">
+                      <strong>Goals &amp; Performance</strong>
+                      <span>Goals, progress and performance updates</span>
+
+                      {goalsLoading ? (
+                        <small>Loading goals...</small>
+                      ) : goals.length === 0 ? (
+                        <small>No goals assigned yet</small>
+                      ) : (
+                        <div className="employee-goals-list">
+                          {goals.map((goal) => (
+                            <div className="employee-goal-item" key={goal.id}>
+                              <div className="employee-goal-top">
+                                <div>
+                                  <strong>{goal.title}</strong>
+                                  <span>
+                                    {displayText(goal.category)} · {displayText(goal.cycle)}
+                                  </span>
+                                </div>
+
+                                <span className="status-badge">
+                                  {goal.status}
+                                </span>
+                              </div>
+
+                              <div className="goal-progress-cell">
+                                <div className="goal-progress-track">
+                                  <div
+                                    className="goal-progress-fill"
+                                    style={{
+                                      width: `${Math.max(0, Math.min(100, goal.progress))}%`,
+                                    }}
+                                  />
+                                </div>
+                                <strong>{goal.progress}%</strong>
+                              </div>
+
+                              <div className="employee-goal-meta">
+                                <span>
+                                  Due: {goal.due_date ? formatDate(goal.due_date) : "No due date"}
+                                </span>
+                              </div>
+
+                              <div className="employee-goal-controls">
+                                <label>
+                                  <span>Progress (%)</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    defaultValue={goal.progress}
+                                    id={`goal-progress-${goal.id}`}
+                                  />
+                                </label>
+
+                                <label>
+                                  <span>Status</span>
+                                  <select
+                                    defaultValue={goal.status}
+                                    id={`goal-status-${goal.id}`}
+                                  >
+                                    {GOAL_STATUSES.map((status) => (
+                                      <option key={status} value={status}>
+                                        {status}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  disabled={goalUpdatingId === goal.id}
+                                  onClick={() => {
+                                    const progressElement = document.getElementById(
+                                      `goal-progress-${goal.id}`
+                                    ) as HTMLInputElement | null;
+
+                                    const statusElement = document.getElementById(
+                                      `goal-status-${goal.id}`
+                                    ) as HTMLSelectElement | null;
+
+                                    handleEmployeeGoalUpdate(
+                                      goal.id,
+                                      Number(progressElement?.value ?? goal.progress),
+                                      statusElement?.value ?? goal.status
+                                    );
+                                  }}
+                                >
+                                  {goalUpdatingId === goal.id
+                                    ? "Updating..."
+                                    : "Update Goal"}
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className="employee-module-card">
                     <div className="employee-module-icon">▤</div>
