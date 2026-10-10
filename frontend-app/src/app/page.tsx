@@ -2851,7 +2851,7 @@ const [
           <header className="employee-workspace-topbar">
             <div className="self-brand">
               <div className="brand-icon">
-                <img src="/humavelios-logo.png" alt="HumaveliOS logo" />
+                <img src="/humavelios-logo.png" alt="HumaveliOS logo" width="38" height="38" style={{ width: "38px", height: "38px", maxWidth: "38px", maxHeight: "38px", objectFit: "contain", borderRadius: "8px" }} />
               </div>
               <div>
                 <strong>HumaveliOS</strong>
@@ -3174,7 +3174,7 @@ const [
         <aside className="sidebar">
           <div className="sidebar-brand">
             <div className="brand-icon-wrapper">
-              <img src="/humavelios-logo.png" alt="HumaveliOS logo" className="brand-logo" />
+              <img src="/humavelios-logo.png" alt="HumaveliOS logo" className="brand-logo" width="38" height="38" style={{ width: "38px", height: "38px", maxWidth: "38px", maxHeight: "38px", objectFit: "contain", borderRadius: "8px" }} />
               <div className="brand-pulse-dot" title="Live Enterprise Sync"></div>
             </div>
             <div className="brand-text">
