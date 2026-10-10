@@ -346,6 +346,95 @@ const EMPTY_LIFECYCLE_FORM: LifecycleForm = {
 };
 
 
+
+type OnboardingTask = {
+  id: number;
+  plan_id: number;
+  phase: "day_30" | "day_60" | "day_90";
+  title: string;
+  description: string | null;
+  category: string;
+  due_day: number;
+  is_completed: boolean;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type OnboardingPlan = {
+  id: number;
+  employee_id: number;
+  role_title: string;
+  department: string;
+  experience_level: string;
+  mentor_name: string | null;
+  focus_areas: string | null;
+  ai_summary: string | null;
+  target_date_30: string | null;
+  target_date_60: string | null;
+  target_date_90: string | null;
+  status: string;
+  progress: number;
+  created_at: string;
+  updated_at: string;
+  tasks: OnboardingTask[];
+  employee_name?: string;
+  employee_email?: string;
+};
+
+type OnboardingSummary = {
+  total_plans: number;
+  active_plans: number;
+  completed_plans: number;
+  average_progress: number;
+  on_track_count: number;
+  needs_attention_count: number;
+  total_tasks_completed: number;
+  total_tasks_count: number;
+};
+
+type AiOnboardingForm = {
+  employee_id: string;
+  experience_level: string;
+  mentor_name: string;
+  focus_areas: string;
+  custom_notes: string;
+};
+
+type AddTaskForm = {
+  phase: "day_30" | "day_60" | "day_90";
+  title: string;
+  description: string;
+  category: string;
+  due_day: string;
+};
+
+const EMPTY_AI_FORM: AiOnboardingForm = {
+  employee_id: "",
+  experience_level: "Mid-Level",
+  mentor_name: "",
+  focus_areas: "",
+  custom_notes: "",
+};
+
+const EMPTY_ADD_TASK_FORM: AddTaskForm = {
+  phase: "day_30",
+  title: "",
+  description: "",
+  category: "Technical",
+  due_day: "30",
+};
+
+const ONBOARDING_CATEGORIES = [
+  "Setup",
+  "Culture",
+  "Technical",
+  "Milestone",
+  "Compliance",
+  "Mentorship",
+];
+
+
 type EmployeeForm = {
   employee_id: string;
   full_name: string;
@@ -644,6 +733,7 @@ const NAV_ITEMS = [
 { id: "analytics", label: "People Analytics", icon: "\u25D4", description: "Workforce, trends and performance" },
 { id: "recruitment", label: "Recruitment", icon: "\u2197", description: "Candidates, pipeline and funnel" },
 { id: "lifecycle", label: "Lifecycle", icon: "\u21BB", description: "Lifecycle, retention and exits" },
+  { id: "onboarding", label: "AI Onboarding", icon: "\u2728", description: "Hyper-personalized 30-60-90 day journeys" },
   { id: "goals", label: "Performance & Goals", icon: "\u2605", description: "Goals, progress and performance management" },
 { id: "users", label: "Users & Roles", icon: "\u2699", description: "Manage accounts and access levels" },
 { id: "audit", label: "Activity Logs", icon: "\u2637", description: "Review administrative activity history" },
@@ -798,6 +888,71 @@ export default function Home() {
     goals,
     setGoals,
   ] = useState<PerformanceGoal[]>([]);
+
+  const [
+    onboardingPlans,
+    setOnboardingPlans,
+  ] = useState<OnboardingPlan[]>([]);
+  const [
+    onboardingSummary,
+    setOnboardingSummary,
+  ] = useState<OnboardingSummary | null>(null);
+  const [
+    onboardingLoading,
+    setOnboardingLoading,
+  ] = useState(false);
+  const [
+    onboardingError,
+    setOnboardingError,
+  ] = useState("");
+  const [
+    selectedPlanId,
+    setSelectedPlanId,
+  ] = useState<number | null>(null);
+  const [
+    activePhaseTab,
+    setActivePhaseTab,
+  ] = useState<"day_30" | "day_60" | "day_90">("day_30");
+  const [
+    showAiGenerateModal,
+    setShowAiGenerateModal,
+  ] = useState(false);
+  const [
+    generatingAi,
+    setGeneratingAi,
+  ] = useState(false);
+  const [
+    aiForm,
+    setAiForm,
+  ] = useState<AiOnboardingForm>({ ...EMPTY_AI_FORM });
+  const [
+    aiFormError,
+    setAiFormError,
+  ] = useState("");
+  const [
+    showAddTaskModal,
+    setShowAddTaskModal,
+  ] = useState(false);
+  const [
+    taskForm,
+    setTaskForm,
+  ] = useState<AddTaskForm>({ ...EMPTY_ADD_TASK_FORM });
+  const [
+    taskFormError,
+    setTaskFormError,
+  ] = useState("");
+  const [
+    taskSaving,
+    setTaskSaving,
+  ] = useState(false);
+  const [
+    onboardingSearch,
+    setOnboardingSearch,
+  ] = useState("");
+  const [
+    onboardingStatusFilter,
+    setOnboardingStatusFilter,
+  ] = useState("All");
 
   const [
     goalsLoading,
@@ -1026,7 +1181,141 @@ const [
       setAuditLoading(false);
     }
   }
-      async function loadGoals() {
+      
+  async function loadOnboarding() {
+    try {
+      setOnboardingLoading(true);
+      setOnboardingError("");
+      const [plansData, summaryData] = await Promise.all([
+        apiRequest<OnboardingPlan[]>("/onboarding"),
+        apiRequest<OnboardingSummary>("/onboarding/summary"),
+      ]);
+      setOnboardingPlans(plansData);
+      setOnboardingSummary(summaryData);
+      if (plansData.length > 0 && !selectedPlanId) {
+        setSelectedPlanId(plansData[0].id);
+      }
+    } catch (err) {
+      setOnboardingError(err instanceof Error ? err.message : "Unable to load onboarding data.");
+    } finally {
+      setOnboardingLoading(false);
+    }
+  }
+
+  async function handleGenerateAiPlan(e: FormEvent) {
+    e.preventDefault();
+    if (!aiForm.employee_id) {
+      setAiFormError("Please select an employee");
+      return;
+    }
+    try {
+      setGeneratingAi(true);
+      setAiFormError("");
+      const generated = await apiRequest<OnboardingPlan>("/onboarding/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employee_id: parseInt(aiForm.employee_id, 10),
+          experience_level: aiForm.experience_level,
+          mentor_name: aiForm.mentor_name || undefined,
+          focus_areas: aiForm.focus_areas || undefined,
+          custom_notes: aiForm.custom_notes || undefined,
+        }),
+      });
+      await loadOnboarding();
+      setSelectedPlanId(generated.id);
+      setShowAiGenerateModal(false);
+      setAiForm({ ...EMPTY_AI_FORM });
+    } catch (err) {
+      setAiFormError(err instanceof Error ? err.message : "Failed to generate AI onboarding plan");
+    } finally {
+      setGeneratingAi(false);
+    }
+  }
+
+  async function handleToggleTask(taskId: number, currentCompleted: boolean) {
+    try {
+      const updated = await apiRequest<OnboardingTask>(`/onboarding/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_completed: !currentCompleted }),
+      });
+      setOnboardingPlans((prev) =>
+        prev.map((plan) => {
+          if (plan.tasks.some((t) => t.id === taskId)) {
+            const updatedTasks = plan.tasks.map((t) => (t.id === taskId ? updated : t));
+            const completedCount = updatedTasks.filter((t) => t.is_completed).length;
+            const progress = Math.round((completedCount / updatedTasks.length) * 100);
+            return {
+              ...plan,
+              tasks: updatedTasks,
+              progress,
+              status: progress === 100 ? "Completed" : progress > 0 ? "In Progress" : "Not Started",
+            };
+          }
+          return plan;
+        })
+      );
+      const summaryData = await apiRequest<OnboardingSummary>("/onboarding/summary");
+      setOnboardingSummary(summaryData);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not update task");
+    }
+  }
+
+  async function handleAddTask(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedPlan) return;
+    if (!taskForm.title.trim()) {
+      setTaskFormError("Task title is required");
+      return;
+    }
+    try {
+      setTaskSaving(true);
+      setTaskFormError("");
+      const created = await apiRequest<OnboardingTask>(`/onboarding/${selectedPlan.employee_id}/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phase: taskForm.phase,
+          title: taskForm.title.trim(),
+          description: taskForm.description.trim() || undefined,
+          category: taskForm.category,
+          due_day: parseInt(taskForm.due_day, 10) || 30,
+        }),
+      });
+      await loadOnboarding();
+      setShowAddTaskModal(false);
+      setTaskForm({ ...EMPTY_ADD_TASK_FORM });
+    } catch (err) {
+      setTaskFormError(err instanceof Error ? err.message : "Failed to add task");
+    } finally {
+      setTaskSaving(false);
+    }
+  }
+
+  async function handleDeleteTask(taskId: number) {
+    if (!window.confirm("Are you sure you want to delete this onboarding task?")) return;
+    try {
+      await apiRequest(`/onboarding/tasks/${taskId}`, { method: "DELETE" });
+      await loadOnboarding();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete task");
+    }
+  }
+
+  async function handleDeletePlan(planId: number) {
+    if (!window.confirm("Are you sure you want to delete this entire onboarding plan?")) return;
+    try {
+      await apiRequest(`/onboarding/${planId}`, { method: "DELETE" });
+      await loadOnboarding();
+      setSelectedPlanId(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete plan");
+    }
+  }
+
+  async function loadGoals() {
     try {
       setGoalsLoading(true);
       setGoalsError("");
@@ -1197,6 +1486,30 @@ const [
     departmentFilter,
     statusFilter,
   ]);
+
+
+  
+  const selectedPlan = useMemo(() => {
+    if (!selectedPlanId) return onboardingPlans[0] || null;
+    return onboardingPlans.find((p) => p.id === selectedPlanId) || onboardingPlans[0] || null;
+  }, [selectedPlanId, onboardingPlans]);
+
+  const filteredOnboardingPlans = useMemo(() => {
+    return onboardingPlans.filter((plan) => {
+      const matchSearch =
+        !onboardingSearch ||
+        (plan.employee_name && plan.employee_name.toLowerCase().includes(onboardingSearch.toLowerCase())) ||
+        plan.role_title.toLowerCase().includes(onboardingSearch.toLowerCase()) ||
+        plan.department.toLowerCase().includes(onboardingSearch.toLowerCase());
+      const matchStatus = onboardingStatusFilter === "All" || plan.status === onboardingStatusFilter;
+      return matchSearch && matchStatus;
+    });
+  }, [onboardingPlans, onboardingSearch, onboardingStatusFilter]);
+
+  const activePhaseTasks = useMemo(() => {
+    if (!selectedPlan) return [];
+    return selectedPlan.tasks.filter((t) => t.phase === activePhaseTab);
+  }, [selectedPlan, activePhaseTab]);
 
 
   /* ==========================================================
@@ -3670,6 +3983,316 @@ const [
               </div>
 
               <p className="analytics-note">{analytics.lifecycle.attrition_note}</p>
+            </div>
+          </section>
+
+
+          
+          {/* ==================================================
+              AI HYPER-PERSONALIZED ONBOARDING VIEW
+              ================================================== */}
+          <section className={`panel view-section ${activeView === "onboarding" ? "view-section-active" : "view-section-hidden"}`}>
+            <div className="onboarding-container">
+              {/* AI Hero Banner */}
+              <div className="onboarding-ai-hero">
+                <div className="onboarding-hero-content">
+                  <div className="onboarding-hero-badge">✨ AI Co-Pilot &amp; Intelligence</div>
+                  <h1 className="onboarding-hero-title">AI-Generated Hyper-Personalized Onboarding</h1>
+                  <p className="onboarding-hero-desc">
+                    Accelerate time-to-productivity with custom 30-60-90 day milestone roadmaps synthesized directly from candidate skills, department roles, seniority level, and focus areas.
+                  </p>
+                </div>
+                {authUser?.role !== "employee" && (
+                  <div className="onboarding-hero-action">
+                    <button
+                      className="btn-ai-generate"
+                      onClick={() => {
+                        setAiForm({
+                          employee_id: employees.length > 0 ? String(employees[0].id) : "",
+                          experience_level: "Mid-Level",
+                          mentor_name: "",
+                          focus_areas: "",
+                          custom_notes: "",
+                        });
+                        setAiFormError("");
+                        setShowAiGenerateModal(true);
+                      }}
+                    >
+                      <span>✨</span> Generate AI Roadmap
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* KPI Summary Cards */}
+              {onboardingSummary && (
+                <div className="onboarding-kpis">
+                  <div className="onboarding-kpi-card">
+                    <span className="onboarding-kpi-label">Active Journeys</span>
+                    <strong className="onboarding-kpi-value">{onboardingSummary.active_plans}</strong>
+                    <span className="onboarding-kpi-subtitle">In-progress employee roadmaps</span>
+                  </div>
+                  <div className="onboarding-kpi-card">
+                    <span className="onboarding-kpi-label">Avg. Completion</span>
+                    <strong className="onboarding-kpi-value">{onboardingSummary.average_progress}%</strong>
+                    <span className="onboarding-kpi-subtitle">Across all active hires</span>
+                  </div>
+                  <div className="onboarding-kpi-card">
+                    <span className="onboarding-kpi-label">Graduated (90 Days)</span>
+                    <strong className="onboarding-kpi-value">{onboardingSummary.completed_plans}</strong>
+                    <span className="onboarding-kpi-subtitle">Completed 100% milestones</span>
+                  </div>
+                  <div className="onboarding-kpi-card">
+                    <span className="onboarding-kpi-label">Milestone Tasks</span>
+                    <strong className="onboarding-kpi-value">
+                      {onboardingSummary.total_tasks_completed} / {onboardingSummary.total_tasks_count}
+                    </strong>
+                    <span className="onboarding-kpi-subtitle">Completed vs total assigned</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Main Workspace: Left List, Right Detail */}
+              <div className="onboarding-workspace-grid">
+                {/* Left Column: Plan Selector & Directory */}
+                <div className="onboarding-sidebar-panel">
+                  <div className="onboarding-panel-header">
+                    <h3>Onboarding Cohorts</h3>
+                    <span className="badge-count">{filteredOnboardingPlans.length}</span>
+                  </div>
+
+                  <div className="filter-row" style={{ display: "flex", gap: "8px" }}>
+                    <input
+                      type="text"
+                      placeholder="Search hire or role..."
+                      value={onboardingSearch}
+                      onChange={(e) => setOnboardingSearch(e.target.value)}
+                      style={{ width: "100%", padding: "7px 10px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "12px" }}
+                    />
+                  </div>
+
+                  {onboardingLoading ? (
+                    <div className="profile-empty">Loading onboarding roadmaps...</div>
+                  ) : filteredOnboardingPlans.length === 0 ? (
+                    <div className="onboarding-empty-state">
+                      <span className="onboarding-empty-icon">📋</span>
+                      <p className="onboarding-empty-title">No plans found</p>
+                      <p className="onboarding-empty-desc">Click "Generate AI Roadmap" above to create an employee onboarding journey.</p>
+                    </div>
+                  ) : (
+                    <div className="onboarding-plans-list">
+                      {filteredOnboardingPlans.map((plan) => {
+                        const isSelected = selectedPlan?.id === plan.id;
+                        return (
+                          <div
+                            key={plan.id}
+                            className={`onboarding-card-item ${isSelected ? "active" : ""}`}
+                            onClick={() => setSelectedPlanId(plan.id)}
+                          >
+                            <div className="onboarding-card-top">
+                              <div>
+                                <div className="onboarding-card-name">{plan.employee_name || `Employee #${plan.employee_id}`}</div>
+                                <div className="onboarding-card-role">{plan.role_title} • {plan.department}</div>
+                              </div>
+                              <span className={`status-pill status-${plan.status.toLowerCase().replace(/\s+/g, "-")}`}>
+                                {plan.status}
+                              </span>
+                            </div>
+
+                            <div className="onboarding-card-meta">
+                              <span>⚡ {plan.experience_level}</span>
+                              {plan.mentor_name && <span>👤 Mentor: {plan.mentor_name}</span>}
+                            </div>
+
+                            <div className="onboarding-progress-bar-wrapper">
+                              <div
+                                className={`onboarding-progress-bar-fill ${plan.progress === 100 ? "completed" : ""}`}
+                                style={{ width: `${plan.progress}%` }}
+                              />
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "#64748b" }}>
+                              <span>Progress</span>
+                              <strong>{plan.progress}%</strong>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Right Column: Detailed 30-60-90 Day Roadmap */}
+                <div className="onboarding-detail-panel">
+                  {!selectedPlan ? (
+                    <div className="onboarding-empty-state" style={{ padding: "64px 20px" }}>
+                      <span className="onboarding-empty-icon">✨</span>
+                      <p className="onboarding-empty-title">Select an employee to view their tailored roadmap</p>
+                      <p className="onboarding-empty-desc">Or generate an AI-tailored plan based on role, skills, and department.</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Header & Meta */}
+                      <div className="onboarding-detail-header">
+                        <div className="onboarding-employee-hero">
+                          <div className="onboarding-employee-avatar">
+                            {(selectedPlan.employee_name || "E").slice(0, 2).toUpperCase()}
+                          </div>
+                          <div className="onboarding-employee-info">
+                            <h2>{selectedPlan.employee_name || `Employee #${selectedPlan.employee_id}`}</h2>
+                            <p>
+                              <strong>{selectedPlan.role_title}</strong>
+                              <span>•</span>
+                              <span>{selectedPlan.department}</span>
+                              <span>•</span>
+                              <span>Level: {selectedPlan.experience_level}</span>
+                              {selectedPlan.mentor_name && (
+                                <>
+                                  <span>•</span>
+                                  <span>Mentor: {selectedPlan.mentor_name}</span>
+                                </>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                          {authUser?.role !== "employee" && (
+                            <>
+                              <button
+                                className="secondary-button"
+                                style={{ fontSize: "12px", padding: "6px 12px" }}
+                                onClick={() => {
+                                  setTaskForm({
+                                    phase: activePhaseTab,
+                                    title: "",
+                                    description: "",
+                                    category: "Technical",
+                                    due_day: activePhaseTab === "day_30" ? "30" : activePhaseTab === "day_60" ? "60" : "90",
+                                  });
+                                  setTaskFormError("");
+                                  setShowAddTaskModal(true);
+                                }}
+                              >
+                                + Add Task
+                              </button>
+                              <button
+                                className="secondary-button"
+                                style={{ fontSize: "12px", padding: "6px 12px", color: "#dc2626", borderColor: "#fecaca" }}
+                                onClick={() => handleDeletePlan(selectedPlan.id)}
+                              >
+                                Reset Plan
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* AI Personalization Insight Note */}
+                      {selectedPlan.ai_summary && (
+                        <div className="onboarding-ai-insight-box">
+                          <span className="onboarding-ai-sparkle-icon">🤖</span>
+                          <div className="onboarding-ai-insight-content">
+                            <h4>AI Tailoring Blueprint &amp; Rationale</h4>
+                            <p>{selectedPlan.ai_summary}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Milestones Target Dates */}
+                      <div className="onboarding-milestones-row">
+                        <div className="onboarding-milestone-pill">
+                          <span className="onboarding-milestone-phase">Day 30 Checkpoint</span>
+                          <span className="onboarding-milestone-date">{formatDate(selectedPlan.target_date_30)}</span>
+                        </div>
+                        <div className="onboarding-milestone-pill">
+                          <span className="onboarding-milestone-phase">Day 60 Midpoint</span>
+                          <span className="onboarding-milestone-date">{formatDate(selectedPlan.target_date_60)}</span>
+                        </div>
+                        <div className="onboarding-milestone-pill">
+                          <span className="onboarding-milestone-phase">Day 90 Graduation</span>
+                          <span className="onboarding-milestone-date">{formatDate(selectedPlan.target_date_90)}</span>
+                        </div>
+                      </div>
+
+                      {/* Phase Selector Tabs */}
+                      <div className="onboarding-phases-tabs">
+                        <button
+                          className={`onboarding-phase-tab ${activePhaseTab === "day_30" ? "active" : ""}`}
+                          onClick={() => setActivePhaseTab("day_30")}
+                        >
+                          <span>Phase 1: Day 1–30 (Foundation &amp; Immersion)</span>
+                          <span className="onboarding-tab-counter">
+                            {selectedPlan.tasks.filter((t) => t.phase === "day_30" && t.is_completed).length} /{" "}
+                            {selectedPlan.tasks.filter((t) => t.phase === "day_30").length}
+                          </span>
+                        </button>
+                        <button
+                          className={`onboarding-phase-tab ${activePhaseTab === "day_60" ? "active" : ""}`}
+                          onClick={() => setActivePhaseTab("day_60")}
+                        >
+                          <span>Phase 2: Day 31–60 (Autonomy &amp; Integration)</span>
+                          <span className="onboarding-tab-counter">
+                            {selectedPlan.tasks.filter((t) => t.phase === "day_60" && t.is_completed).length} /{" "}
+                            {selectedPlan.tasks.filter((t) => t.phase === "day_60").length}
+                          </span>
+                        </button>
+                        <button
+                          className={`onboarding-phase-tab ${activePhaseTab === "day_90" ? "active" : ""}`}
+                          onClick={() => setActivePhaseTab("day_90")}
+                        >
+                          <span>Phase 3: Day 61–90 (Impact &amp; Leadership)</span>
+                          <span className="onboarding-tab-counter">
+                            {selectedPlan.tasks.filter((t) => t.phase === "day_90" && t.is_completed).length} /{" "}
+                            {selectedPlan.tasks.filter((t) => t.phase === "day_90").length}
+                          </span>
+                        </button>
+                      </div>
+
+                      {/* Task Checklist for Active Phase */}
+                      <div className="onboarding-tasks-container">
+                        {activePhaseTasks.length === 0 ? (
+                          <div className="profile-empty">No milestone tasks defined for this phase yet. Click "+ Add Task" to add one.</div>
+                        ) : (
+                          activePhaseTasks.map((task) => (
+                            <div key={task.id} className={`onboarding-task-card ${task.is_completed ? "completed" : ""}`}>
+                              <input
+                                type="checkbox"
+                                className="onboarding-task-checkbox"
+                                checked={task.is_completed}
+                                onChange={() => handleToggleTask(task.id, task.is_completed)}
+                              />
+                              <div className="onboarding-task-body">
+                                <div className="onboarding-task-title-row">
+                                  <span className="onboarding-task-title">{task.title}</span>
+                                  <span className={`category-tag ${task.category}`}>{task.category}</span>
+                                  <span className="onboarding-task-due">Target: Day {task.due_day}</span>
+                                  {task.completed_at && (
+                                    <span style={{ fontSize: "11px", color: "#10b981", fontWeight: 600 }}>
+                                      ✓ Done {formatDate(task.completed_at)}
+                                    </span>
+                                  )}
+                                </div>
+                                {task.description && <p className="onboarding-task-desc">{task.description}</p>}
+                              </div>
+
+                              {authUser?.role !== "employee" && (
+                                <button
+                                  className="table-action-button delete-action"
+                                  style={{ alignSelf: "center" }}
+                                  onClick={() => handleDeleteTask(task.id)}
+                                  title="Delete task"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
           </section>
 

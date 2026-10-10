@@ -20,6 +20,8 @@ from models import (
     Candidate,
     Employee,
     EmployeeLifecycle,
+    OnboardingPlan,
+    OnboardingTask,
     PerformanceGoal,
     User,
     UserEmployeeLink,
@@ -234,6 +236,14 @@ async def authentication_middleware(request, call_next):
         if request.method == "GET":
             allowed = role in {"admin", "hr", "manager", "employee"}
         elif request.method in {"PUT", "PATCH"}:
+            allowed = role in {"admin", "hr", "manager", "employee"}
+        else:
+            allowed = role in {"admin", "hr", "manager"}
+
+    elif path.startswith("/onboarding"):
+        if request.method == "GET":
+            allowed = role in {"admin", "hr", "manager", "employee"}
+        elif request.method in {"PATCH"}:
             allowed = role in {"admin", "hr", "manager", "employee"}
         else:
             allowed = role in {"admin", "hr", "manager"}
@@ -454,6 +464,97 @@ class PerformanceGoalResponse(BaseModel):
     created_by_user_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
+
+
+# ============================================================
+# ONBOARDING CONSTANTS & SCHEMAS
+# ============================================================
+
+ONBOARDING_STATUSES = [
+    "Not Started",
+    "In Progress",
+    "Completed",
+    "On Track",
+    "Needs Attention",
+]
+
+ONBOARDING_PHASES = [
+    "day_30",
+    "day_60",
+    "day_90",
+]
+
+ONBOARDING_CATEGORIES = [
+    "Setup",
+    "Culture",
+    "Technical",
+    "Milestone",
+    "Compliance",
+    "Mentorship",
+]
+
+
+class OnboardingTaskResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    plan_id: int
+    phase: str
+    title: str
+    description: Optional[str] = None
+    category: str
+    due_day: int
+    is_completed: bool
+    completed_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class OnboardingPlanResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    employee_id: int
+    role_title: str
+    department: str
+    experience_level: str
+    mentor_name: Optional[str] = None
+    focus_areas: Optional[str] = None
+    ai_summary: Optional[str] = None
+    target_date_30: Optional[datetime] = None
+    target_date_60: Optional[datetime] = None
+    target_date_90: Optional[datetime] = None
+    status: str
+    progress: int
+    created_at: datetime
+    updated_at: datetime
+    tasks: list[OnboardingTaskResponse] = []
+    employee_name: Optional[str] = None
+    employee_email: Optional[str] = None
+
+
+class OnboardingGenerateRequest(BaseModel):
+    employee_id: int
+    experience_level: str = "Mid-Level"
+    mentor_name: Optional[str] = None
+    focus_areas: Optional[str] = None
+    custom_notes: Optional[str] = None
+
+
+class OnboardingTaskCreateRequest(BaseModel):
+    phase: str
+    title: str
+    description: Optional[str] = None
+    category: str = "Technical"
+    due_day: int = 30
+
+
+class OnboardingTaskUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    due_day: Optional[int] = None
+    is_completed: Optional[bool] = None
 
 
 LIFECYCLE_STATUSES = [
@@ -1403,6 +1504,822 @@ def delete_goal(
         "message": "Performance goal deleted successfully",
         "goal_id": goal_id,
     }
+
+
+# ============================================================
+# AI-GENERATED HYPER-PERSONALIZED ONBOARDING
+# ============================================================
+
+def calculate_plan_progress(plan: OnboardingPlan, db: Session) -> int:
+    """Calculate and update the completion progress for an onboarding plan."""
+    tasks = db.query(OnboardingTask).filter(OnboardingTask.plan_id == plan.id).all()
+    if not tasks:
+        plan.progress = 0
+        plan.status = "Not Started"
+        db.commit()
+        return 0
+
+    completed_count = sum(1 for t in tasks if t.is_completed)
+    progress_pct = int(round((completed_count / len(tasks)) * 100))
+    plan.progress = progress_pct
+
+    if progress_pct == 100:
+        plan.status = "Completed"
+    elif progress_pct > 0:
+        plan.status = "In Progress"
+    else:
+        plan.status = "Not Started"
+
+    db.commit()
+    return progress_pct
+
+
+def build_ai_onboarding_plan_tasks(
+    employee: Employee,
+    experience_level: str,
+    mentor_name: Optional[str],
+    focus_areas: Optional[str],
+    custom_notes: Optional[str],
+) -> tuple[str, list[dict]]:
+    """
+    Intelligent AI generator that produces a tailored 30-60-90 day onboarding
+    roadmap based on role, department, seniority level, skills, and focus areas.
+    """
+    name = employee.full_name
+    dept = (employee.department or "General").strip().lower()
+    designation = employee.designation or "Team Member"
+    skills_raw = employee.skills or ""
+    skills_list = [s.strip() for s in skills_raw.split(",") if s.strip() and s.strip().lower() != "none"]
+    focus = focus_areas.strip() if focus_areas else ""
+    mentor = mentor_name.strip() if mentor_name else (employee.manager or "Assigned Peer Mentor")
+    is_senior = experience_level in {"Senior", "Lead / Executive"}
+
+    # Construct AI Rationale Narrative
+    skills_str = f" with recognized proficiency in {', '.join(skills_list[:3])}" if skills_list else ""
+    focus_str = f" Key focus tailored to '{focus}'." if focus else ""
+    notes_str = f" Incorporating leadership notes: '{custom_notes}'." if custom_notes else ""
+    seniority_note = (
+        "Foundational training has been accelerated to emphasize high-autonomy architecture, strategy, and cross-functional leadership."
+        if is_senior
+        else "Structured with guided onboarding, mentorship checkpoints, and step-by-step milestone delivery."
+    )
+
+    ai_summary = (
+        f"Hyper-personalized 90-day onboarding journey curated for {name} ({designation}, {employee.department}){skills_str}. "
+        f"{seniority_note}{focus_str}{notes_str} Primary mentor assigned: {mentor}."
+    )
+
+    tasks: list[dict] = []
+
+    # -------------------------------------------------------------
+    # PHASE 1: DAY 1 - 30 (Foundation & Immersion)
+    # -------------------------------------------------------------
+    if "eng" in dept or "tech" in dept or "software" in dept or "dev" in dept or "product" in dept or "data" in dept:
+        skill_focus_item = f"Review {skills_list[0]} & core codebase standards" if skills_list else "Codebase architecture deep dive"
+        tasks.extend([
+            {
+                "phase": "day_30",
+                "title": "Hardware & Cloud Dev Environment Setup",
+                "description": f"Provision IDE, VPN, SSH keys, repository access, and verify local build & test pipelines. Sync with {mentor}.",
+                "category": "Setup",
+                "due_day": 3,
+            },
+            {
+                "phase": "day_30",
+                "title": "Mandatory Security & SOC2 Compliance Onboarding",
+                "description": "Complete compliance training, password manager setup, MFA authentication, and security policy sign-offs.",
+                "category": "Compliance",
+                "due_day": 7,
+            },
+            {
+                "phase": "day_30",
+                "title": f"System Architecture & {skill_focus_item}",
+                "description": f"Walkthrough system topology, API contracts, microservices, and database models with {mentor}.",
+                "category": "Technical",
+                "due_day": 14,
+            },
+            {
+                "phase": "day_30",
+                "title": "Ship First Starter PR / Bug Fix to Production",
+                "description": "Pick a 'Good First Issue' from the backlog, submit PR through CI/CD, pass code review, and deploy safely.",
+                "category": "Milestone",
+                "due_day": 21,
+            },
+            {
+                "phase": "day_30",
+                "title": f"1-on-1 Coffee Chats with Product & Engineering Leads",
+                "description": "Schedule introductory syncs with key squad members, product managers, and QA leads.",
+                "category": "Culture",
+                "due_day": 25,
+            },
+            {
+                "phase": "day_30",
+                "title": "Day 30 Immersion Calibration Review",
+                "description": f"Formal 30-day review with {mentor} and manager to review velocity, unblock obstacles, and align on Day 60 targets.",
+                "category": "Mentorship",
+                "due_day": 30,
+            },
+        ])
+    elif "hr" in dept or "people" in dept or "talent" in dept or "recruit" in dept:
+        tasks.extend([
+            {
+                "phase": "day_30",
+                "title": "HRIS & ATS System Access & Tooling Provisioning",
+                "description": f"Setup accounts on HumaveliOS, ATS, Slack, and internal documentation wikis with {mentor}.",
+                "category": "Setup",
+                "due_day": 3,
+            },
+            {
+                "phase": "day_30",
+                "title": "Company Policies, Handbook & Compliance Mastery",
+                "description": "Review labor compliance standards, employee handbook, benefits policies, and data privacy protocols.",
+                "category": "Compliance",
+                "due_day": 7,
+            },
+            {
+                "phase": "day_30",
+                "title": "Shadow 5 Candidate Screening & Onboarding Sessions",
+                "description": f"Observe active recruitment calls and new hire orientations with {mentor} to understand brand voice.",
+                "category": "Technical",
+                "due_day": 14,
+            },
+            {
+                "phase": "day_30",
+                "title": "Facilitate First Independent Candidate / Employee Sync",
+                "description": "Conduct your first candidate phone screen or new hire welcome session end-to-end.",
+                "category": "Milestone",
+                "due_day": 21,
+            },
+            {
+                "phase": "day_30",
+                "title": "Cross-department Stakeholder Introductions",
+                "description": "Meet department leads (Engineering, Sales, Operations) to map out hiring & people support priorities.",
+                "category": "Culture",
+                "due_day": 25,
+            },
+            {
+                "phase": "day_30",
+                "title": "Day 30 HR Operations Review",
+                "description": f"Review initial candidate feedback and onboarding velocity with {mentor}.",
+                "category": "Mentorship",
+                "due_day": 30,
+            },
+        ])
+    elif "sales" in dept or "market" in dept or "growth" in dept or "rev" in dept:
+        tasks.extend([
+            {
+                "phase": "day_30",
+                "title": "CRM Tooling, Pipeline Setup & Lead Routing",
+                "description": f"Setup CRM credentials, prospecting extensions, email templates, and calendar links with {mentor}.",
+                "category": "Setup",
+                "due_day": 3,
+            },
+            {
+                "phase": "day_30",
+                "title": "Product Value Proposition & Pitch Deck Certification",
+                "description": "Master company product tiers, pricing matrices, buyer personas, and competitive differentiators.",
+                "category": "Technical",
+                "due_day": 10,
+            },
+            {
+                "phase": "day_30",
+                "title": "Shadow 8 Live Customer / Client Pitch Calls",
+                "description": f"Take detailed notes on common objection handling and value discovery techniques alongside {mentor}.",
+                "category": "Culture",
+                "due_day": 18,
+            },
+            {
+                "phase": "day_30",
+                "title": "Deliver Mock Pitch Certification to Sales Leadership",
+                "description": "Deliver a simulated 20-minute client demo and receive scoring & feedback from senior leadership.",
+                "category": "Milestone",
+                "due_day": 24,
+            },
+            {
+                "phase": "day_30",
+                "title": "Day 30 Sales Ramp-Up Calibration",
+                "description": f"Assess lead quota readiness and territory mapping with {mentor}.",
+                "category": "Mentorship",
+                "due_day": 30,
+            },
+        ])
+    else:
+        tasks.extend([
+            {
+                "phase": "day_30",
+                "title": "Workstation & Productivity Stack Configuration",
+                "description": f"Configure enterprise email, documentation access, and communication channels with {mentor}.",
+                "category": "Setup",
+                "due_day": 3,
+            },
+            {
+                "phase": "day_30",
+                "title": "Company Mission, Values & Operational Protocols",
+                "description": "Complete company values walkthrough, compliance training, and operational SOP readings.",
+                "category": "Compliance",
+                "due_day": 7,
+            },
+            {
+                "phase": "day_30",
+                "title": "Departmental Workflows & Tooling Deep Dive",
+                "description": f"Shadow current projects and understand reporting pipelines with {mentor}.",
+                "category": "Technical",
+                "due_day": 14,
+            },
+            {
+                "phase": "day_30",
+                "title": "Deliver First Standard Operating Deliverable",
+                "description": "Complete an assigned project deliverable according to team quality benchmarks.",
+                "category": "Milestone",
+                "due_day": 22,
+            },
+            {
+                "phase": "day_30",
+                "title": "Day 30 Milestone & Integration Sync",
+                "description": f"Review team integration, deliverables, and expectations for Month 2 with {mentor}.",
+                "category": "Mentorship",
+                "due_day": 30,
+            },
+        ])
+
+    # -------------------------------------------------------------
+    # PHASE 2: DAY 31 - 60 (Autonomy & Deep Integration)
+    # -------------------------------------------------------------
+    if "eng" in dept or "tech" in dept or "dev" in dept or "product" in dept:
+        tasks.extend([
+            {
+                "phase": "day_60",
+                "title": f"Own Feature Milestone: {'Integration of ' + focus if focus else 'Core Service Feature'}",
+                "description": "Lead design and implementation of a substantial feature module from specification to staging deployment.",
+                "category": "Technical",
+                "due_day": 42,
+            },
+            {
+                "phase": "day_60",
+                "title": "Active Participation in Peer PR Reviews & Architecture RFCs",
+                "description": "Provide constructive code reviews across at least 5 team PRs and participate in sprint RFC discussions.",
+                "category": "Technical",
+                "due_day": 48,
+            },
+            {
+                "phase": "day_60",
+                "title": "Observability, Telemetry & Monitoring Audit",
+                "description": "Build Grafana/Datadog dashboards, error logs, and alerts for your owned service components.",
+                "category": "Milestone",
+                "due_day": 54,
+            },
+            {
+                "phase": "day_60",
+                "title": "Cross-Functional Sync with UX, QA & Product Leads",
+                "description": "Collaborate on acceptance criteria, edge case handling, and user test scenarios.",
+                "category": "Culture",
+                "due_day": 58,
+            },
+            {
+                "phase": "day_60",
+                "title": "Day 60 Mid-Point Performance & Autonomy Review",
+                "description": f"Evaluate technical autonomy, velocity, and alignment with {mentor} and manager.",
+                "category": "Mentorship",
+                "due_day": 60,
+            },
+        ])
+    else:
+        tasks.extend([
+            {
+                "phase": "day_60",
+                "title": f"Lead Autonomous Project: {focus if focus else 'Quarterly Domain Initiative'}",
+                "description": "Execute assigned project workflow independently from planning to delivery.",
+                "category": "Technical",
+                "due_day": 45,
+            },
+            {
+                "phase": "day_60",
+                "title": "Cross-Department Collaboration & Process Optimization",
+                "description": "Identify at least one operational bottleneck and propose a documented streamline solution.",
+                "category": "Milestone",
+                "due_day": 52,
+            },
+            {
+                "phase": "day_60",
+                "title": "Participate in Departmental Strategy & Retro Sessions",
+                "description": "Contribute feedback and insights during team sprint retrospectives and planning calls.",
+                "category": "Culture",
+                "due_day": 56,
+            },
+            {
+                "phase": "day_60",
+                "title": "Day 60 Progress Review & KPI Check",
+                "description": f"Assess autonomy and key results with {mentor}.",
+                "category": "Mentorship",
+                "due_day": 60,
+            },
+        ])
+
+    # -------------------------------------------------------------
+    # PHASE 3: DAY 61 - 90 (Impact, Leadership & Innovation)
+    # -------------------------------------------------------------
+    if is_senior:
+        tasks.extend([
+            {
+                "phase": "day_90",
+                "title": "Drive Strategic High-Impact Initiative & Architecture Review",
+                "description": f"Architect and drive a high-leverage initiative focused on {focus or 'scalability and operational excellence'}.",
+                "category": "Milestone",
+                "due_day": 75,
+            },
+            {
+                "phase": "day_90",
+                "title": "Host Internal Knowledge-Share / Tech Talk Session",
+                "description": "Deliver a 30-minute tech talk, case study, or best practices workshop for the broader organization.",
+                "category": "Culture",
+                "due_day": 82,
+            },
+            {
+                "phase": "day_90",
+                "title": "Buddy / Mentor a Newer Team Member or Intern",
+                "description": "Provide guidance and support to incoming hires, sharing onboarding insights.",
+                "category": "Mentorship",
+                "due_day": 86,
+            },
+            {
+                "phase": "day_90",
+                "title": "Day 90 Full Onboarding Graduation & Long-Term OKR Roadmapping",
+                "description": f"Finalize onboarding roadmap graduation with {mentor} and set 6-month performance objectives.",
+                "category": "Milestone",
+                "due_day": 90,
+            },
+        ])
+    else:
+        tasks.extend([
+            {
+                "phase": "day_90",
+                "title": "Deliver High-Impact Quarterly Milestone Deliverable",
+                "description": f"Successfully ship your assigned quarter project with full documentation and quality benchmarks.",
+                "category": "Milestone",
+                "due_day": 75,
+            },
+            {
+                "phase": "day_90",
+                "title": "Contribute to Team Knowledge Base & Documentation",
+                "description": "Update team wikis, SOPs, and onboarding guides with insights learned during your first 90 days.",
+                "category": "Culture",
+                "due_day": 82,
+            },
+            {
+                "phase": "day_90",
+                "title": "Day 90 Comprehensive Review & Future Growth Roadmap",
+                "description": f"Complete 90-day onboarding graduation review with {mentor} and establish goals for the upcoming cycle.",
+                "category": "Mentorship",
+                "due_day": 90,
+            },
+        ])
+
+    return ai_summary, tasks
+
+
+@app.get(
+    "/onboarding",
+    response_model=list[OnboardingPlanResponse],
+)
+def get_onboarding_plans(
+    request: Request,
+    employee_id: Optional[int] = Query(default=None),
+    status: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """Retrieve onboarding plans. Employees can only view their own plan."""
+    role = request.state.user.get("role")
+
+    query = db.query(OnboardingPlan).order_by(OnboardingPlan.created_at.desc())
+
+    if role == "employee":
+        linked_employee_id = get_linked_employee_id(request, db)
+        if linked_employee_id is None:
+            return []
+        query = query.filter(OnboardingPlan.employee_id == linked_employee_id)
+    elif employee_id is not None:
+        query = query.filter(OnboardingPlan.employee_id == employee_id)
+
+    if status and status != "All":
+        query = query.filter(OnboardingPlan.status == status)
+
+    plans = query.all()
+    results = []
+
+    for plan in plans:
+        tasks = (
+            db.query(OnboardingTask)
+            .filter(OnboardingTask.plan_id == plan.id)
+            .order_by(OnboardingTask.due_day.asc(), OnboardingTask.id.asc())
+            .all()
+        )
+        emp = db.query(Employee).filter(Employee.id == plan.employee_id).first()
+
+        plan_dict = {
+            "id": plan.id,
+            "employee_id": plan.employee_id,
+            "role_title": plan.role_title,
+            "department": plan.department,
+            "experience_level": plan.experience_level,
+            "mentor_name": plan.mentor_name,
+            "focus_areas": plan.focus_areas,
+            "ai_summary": plan.ai_summary,
+            "target_date_30": plan.target_date_30,
+            "target_date_60": plan.target_date_60,
+            "target_date_90": plan.target_date_90,
+            "status": plan.status,
+            "progress": plan.progress,
+            "created_at": plan.created_at,
+            "updated_at": plan.updated_at,
+            "tasks": tasks,
+            "employee_name": emp.full_name if emp else f"Employee #{plan.employee_id}",
+            "employee_email": emp.email if emp else "",
+        }
+        results.append(plan_dict)
+
+    return results
+
+
+@app.get("/onboarding/summary")
+def get_onboarding_summary(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Analytics and summary metrics for hyper-personalized onboarding."""
+    plans = db.query(OnboardingPlan).all()
+    total_plans = len(plans)
+
+    if total_plans == 0:
+        return {
+            "total_plans": 0,
+            "active_plans": 0,
+            "completed_plans": 0,
+            "average_progress": 0,
+            "on_track_count": 0,
+            "needs_attention_count": 0,
+            "total_tasks_completed": 0,
+            "total_tasks_count": 0,
+            "recent_onboardings": [],
+        }
+
+    completed_plans = sum(1 for p in plans if p.progress == 100 or p.status == "Completed")
+    active_plans = total_plans - completed_plans
+    avg_progress = int(round(sum(p.progress for p in plans) / total_plans))
+
+    all_tasks = db.query(OnboardingTask).all()
+    completed_tasks = sum(1 for t in all_tasks if t.is_completed)
+
+    return {
+        "total_plans": total_plans,
+        "active_plans": active_plans,
+        "completed_plans": completed_plans,
+        "average_progress": avg_progress,
+        "on_track_count": sum(1 for p in plans if p.progress >= 50 or p.status == "Completed"),
+        "needs_attention_count": sum(1 for p in plans if p.progress < 30 and p.status != "Completed"),
+        "total_tasks_completed": completed_tasks,
+        "total_tasks_count": len(all_tasks),
+    }
+
+
+@app.get(
+    "/onboarding/{employee_id}",
+    response_model=OnboardingPlanResponse,
+)
+def get_employee_onboarding_plan(
+    employee_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Get the full onboarding plan and tasks for a specific employee."""
+    role = request.state.user.get("role")
+    if role == "employee":
+        linked_employee_id = get_linked_employee_id(request, db)
+        if linked_employee_id != employee_id:
+            raise HTTPException(status_code=403, detail="You can only access your own onboarding roadmap")
+
+    plan = db.query(OnboardingPlan).filter(OnboardingPlan.employee_id == employee_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="No onboarding plan found for this employee")
+
+    tasks = (
+        db.query(OnboardingTask)
+        .filter(OnboardingTask.plan_id == plan.id)
+        .order_by(OnboardingTask.due_day.asc(), OnboardingTask.id.asc())
+        .all()
+    )
+    emp = db.query(Employee).filter(Employee.id == employee_id).first()
+
+    return {
+        "id": plan.id,
+        "employee_id": plan.employee_id,
+        "role_title": plan.role_title,
+        "department": plan.department,
+        "experience_level": plan.experience_level,
+        "mentor_name": plan.mentor_name,
+        "focus_areas": plan.focus_areas,
+        "ai_summary": plan.ai_summary,
+        "target_date_30": plan.target_date_30,
+        "target_date_60": plan.target_date_60,
+        "target_date_90": plan.target_date_90,
+        "status": plan.status,
+        "progress": plan.progress,
+        "created_at": plan.created_at,
+        "updated_at": plan.updated_at,
+        "tasks": tasks,
+        "employee_name": emp.full_name if emp else f"Employee #{employee_id}",
+        "employee_email": emp.email if emp else "",
+    }
+
+
+@app.post(
+    "/onboarding/generate",
+    response_model=OnboardingPlanResponse,
+)
+def generate_ai_onboarding_plan(
+    payload: OnboardingGenerateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Generate or regenerate an AI-customized 30-60-90 day onboarding roadmap."""
+    role = request.state.user.get("role")
+    if role not in {"admin", "hr", "manager"}:
+        raise HTTPException(status_code=403, detail="Only admins, HR, and managers can generate onboarding plans")
+
+    employee = db.query(Employee).filter(Employee.id == payload.employee_id).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    # Target milestone dates based on employee joining date or current date
+    base_date = employee.date_of_joining or datetime.utcnow()
+    # Ensure base_date is datetime
+    if isinstance(base_date, date) and not isinstance(base_date, datetime):
+        base_date = datetime.combine(base_date, datetime.min.time())
+
+    from datetime import timedelta
+    target_30 = base_date + timedelta(days=30)
+    target_60 = base_date + timedelta(days=60)
+    target_90 = base_date + timedelta(days=90)
+
+    ai_summary, generated_tasks = build_ai_onboarding_plan_tasks(
+        employee=employee,
+        experience_level=payload.experience_level,
+        mentor_name=payload.mentor_name,
+        focus_areas=payload.focus_areas,
+        custom_notes=payload.custom_notes,
+    )
+
+    # Check if plan already exists; update it or create new
+    existing_plan = db.query(OnboardingPlan).filter(OnboardingPlan.employee_id == employee.id).first()
+
+    if existing_plan:
+        existing_plan.role_title = employee.designation
+        existing_plan.department = employee.department
+        existing_plan.experience_level = payload.experience_level
+        existing_plan.mentor_name = payload.mentor_name or employee.manager
+        existing_plan.focus_areas = payload.focus_areas
+        existing_plan.ai_summary = ai_summary
+        existing_plan.target_date_30 = target_30
+        existing_plan.target_date_60 = target_60
+        existing_plan.target_date_90 = target_90
+        existing_plan.status = "In Progress"
+        existing_plan.progress = 0
+        plan = existing_plan
+
+        # Clear previous tasks for fresh AI generation
+        db.query(OnboardingTask).filter(OnboardingTask.plan_id == plan.id).delete()
+    else:
+        plan = OnboardingPlan(
+            employee_id=employee.id,
+            role_title=employee.designation,
+            department=employee.department,
+            experience_level=payload.experience_level,
+            mentor_name=payload.mentor_name or employee.manager,
+            focus_areas=payload.focus_areas,
+            ai_summary=ai_summary,
+            target_date_30=target_30,
+            target_date_60=target_60,
+            target_date_90=target_90,
+            status="In Progress",
+            progress=0,
+        )
+        db.add(plan)
+        db.flush()
+
+    # Insert generated tasks
+    created_tasks = []
+    for t in generated_tasks:
+        task_obj = OnboardingTask(
+            plan_id=plan.id,
+            phase=t["phase"],
+            title=t["title"],
+            description=t.get("description"),
+            category=t.get("category", "Technical"),
+            due_day=t.get("due_day", 30),
+            is_completed=False,
+        )
+        db.add(task_obj)
+        created_tasks.append(task_obj)
+
+    db.commit()
+    db.refresh(plan)
+
+    log_audit(
+        db,
+        request,
+        "AI_ONBOARDING_PLAN_GENERATED",
+        "Onboarding",
+        target_type="OnboardingPlan",
+        target_id=plan.id,
+        details=f"Generated AI personalized onboarding plan for {employee.full_name} ({employee.designation})",
+    )
+
+    tasks = (
+        db.query(OnboardingTask)
+        .filter(OnboardingTask.plan_id == plan.id)
+        .order_by(OnboardingTask.due_day.asc(), OnboardingTask.id.asc())
+        .all()
+    )
+
+    return {
+        "id": plan.id,
+        "employee_id": plan.employee_id,
+        "role_title": plan.role_title,
+        "department": plan.department,
+        "experience_level": plan.experience_level,
+        "mentor_name": plan.mentor_name,
+        "focus_areas": plan.focus_areas,
+        "ai_summary": plan.ai_summary,
+        "target_date_30": plan.target_date_30,
+        "target_date_60": plan.target_date_60,
+        "target_date_90": plan.target_date_90,
+        "status": plan.status,
+        "progress": plan.progress,
+        "created_at": plan.created_at,
+        "updated_at": plan.updated_at,
+        "tasks": tasks,
+        "employee_name": employee.full_name,
+        "employee_email": employee.email,
+    }
+
+
+@app.post(
+    "/onboarding/{employee_id}/tasks",
+    response_model=OnboardingTaskResponse,
+)
+def add_onboarding_task(
+    employee_id: int,
+    payload: OnboardingTaskCreateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Add a custom task to an onboarding plan."""
+    role = request.state.user.get("role")
+    if role not in {"admin", "hr", "manager"}:
+        raise HTTPException(status_code=403, detail="Only admins, HR, and managers can add onboarding tasks")
+
+    plan = db.query(OnboardingPlan).filter(OnboardingPlan.employee_id == employee_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="No onboarding plan found for this employee")
+
+    task = OnboardingTask(
+        plan_id=plan.id,
+        phase=payload.phase,
+        title=payload.title,
+        description=payload.description,
+        category=payload.category,
+        due_day=payload.due_day,
+        is_completed=False,
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+
+    calculate_plan_progress(plan, db)
+
+    log_audit(
+        db,
+        request,
+        "ONBOARDING_TASK_ADDED",
+        "Onboarding",
+        target_type="OnboardingTask",
+        target_id=task.id,
+        details=f"Added task '{task.title}' to {payload.phase} for employee #{employee_id}",
+    )
+
+    return task
+
+
+@app.patch(
+    "/onboarding/tasks/{task_id}",
+    response_model=OnboardingTaskResponse,
+)
+def update_onboarding_task(
+    task_id: int,
+    payload: OnboardingTaskUpdateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Update task completion or details. Employees can check off their own tasks."""
+    task = db.query(OnboardingTask).filter(OnboardingTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    plan = db.query(OnboardingPlan).filter(OnboardingPlan.id == task.plan_id).first()
+    role = request.state.user.get("role")
+
+    if role == "employee":
+        linked_employee_id = get_linked_employee_id(request, db)
+        if not plan or plan.employee_id != linked_employee_id:
+            raise HTTPException(status_code=403, detail="You can only update tasks in your own onboarding plan")
+
+    if payload.is_completed is not None:
+        task.is_completed = payload.is_completed
+        task.completed_at = datetime.utcnow() if payload.is_completed else None
+
+    if role in {"admin", "hr", "manager"}:
+        if payload.title is not None:
+            task.title = payload.title
+        if payload.description is not None:
+            task.description = payload.description
+        if payload.category is not None:
+            task.category = payload.category
+        if payload.due_day is not None:
+            task.due_day = payload.due_day
+
+    db.commit()
+    db.refresh(task)
+
+    if plan:
+        calculate_plan_progress(plan, db)
+
+    log_audit(
+        db,
+        request,
+        "ONBOARDING_TASK_UPDATED",
+        "Onboarding",
+        target_type="OnboardingTask",
+        target_id=task.id,
+        details=f"Updated task #{task.id} (Completed: {task.is_completed})",
+    )
+
+    return task
+
+
+@app.delete("/onboarding/tasks/{task_id}")
+def delete_onboarding_task(
+    task_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Delete a task from an onboarding plan."""
+    role = request.state.user.get("role")
+    if role not in {"admin", "hr", "manager"}:
+        raise HTTPException(status_code=403, detail="Only admins, HR, and managers can delete onboarding tasks")
+
+    task = db.query(OnboardingTask).filter(OnboardingTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    plan = db.query(OnboardingPlan).filter(OnboardingPlan.id == task.plan_id).first()
+    db.delete(task)
+    db.commit()
+
+    if plan:
+        calculate_plan_progress(plan, db)
+
+    return {"message": "Task deleted successfully", "task_id": task_id}
+
+
+@app.delete("/onboarding/{plan_id}")
+def delete_onboarding_plan(
+    plan_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Delete an onboarding plan and all associated tasks."""
+    role = request.state.user.get("role")
+    if role not in {"admin", "hr"}:
+        raise HTTPException(status_code=403, detail="Only admins and HR can delete onboarding plans")
+
+    plan = db.query(OnboardingPlan).filter(OnboardingPlan.id == plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Onboarding plan not found")
+
+    db.delete(plan)
+    db.commit()
+
+    log_audit(
+        db,
+        request,
+        "ONBOARDING_PLAN_DELETED",
+        "Onboarding",
+        target_type="OnboardingPlan",
+        target_id=plan_id,
+        details=f"Deleted onboarding plan #{plan_id}",
+    )
+
+    return {"message": "Onboarding plan deleted successfully", "plan_id": plan_id}
+
 # ============================================================
 # ROOT
 # ============================================================

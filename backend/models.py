@@ -210,3 +210,40 @@ class PerformanceGoal(Base):
         default=datetime.utcnow,
         onupdate=datetime.utcnow,
     )
+
+
+class OnboardingPlan(Base):
+    __tablename__ = "onboarding_plans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    employee_id: Mapped[int] = mapped_column(Integer, ForeignKey("employees.id"), unique=True, index=True)
+    role_title: Mapped[str] = mapped_column(String(150))
+    department: Mapped[str] = mapped_column(String(100))
+    experience_level: Mapped[str] = mapped_column(String(50), default="Mid-Level")
+    mentor_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    focus_areas: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    target_date_30: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    target_date_60: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    target_date_90: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="In Progress")
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class OnboardingTask(Base):
+    __tablename__ = "onboarding_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    plan_id: Mapped[int] = mapped_column(Integer, ForeignKey("onboarding_plans.id", ondelete="CASCADE"), index=True)
+    phase: Mapped[str] = mapped_column(String(20), index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    category: Mapped[str] = mapped_column(String(50), default="Technical")
+    due_day: Mapped[int] = mapped_column(Integer, default=30)
+    is_completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
