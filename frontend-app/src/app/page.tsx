@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   FormEvent,
@@ -727,17 +727,131 @@ function downloadCandidateTemplate() {
 }
 
 
-const NAV_ITEMS = [
-  { id: "overview", label: "Overview", icon: "\u2302", description: "Workforce health at a glance" },
-{ id: "employees", label: "Employees", icon: "\u{1F465}", description: "Employee records and Employee 360" },
-{ id: "analytics", label: "People Analytics", icon: "\u25D4", description: "Workforce, trends and performance" },
-{ id: "recruitment", label: "Recruitment", icon: "\u2197", description: "Candidates, pipeline and funnel" },
-{ id: "lifecycle", label: "Lifecycle", icon: "\u21BB", description: "Lifecycle, retention and exits" },
-  { id: "onboarding", label: "AI Onboarding", icon: "\u2728", description: "Hyper-personalized 30-60-90 day journeys" },
-  { id: "goals", label: "Performance & Goals", icon: "\u2605", description: "Goals, progress and performance management" },
-{ id: "users", label: "Users & Roles", icon: "\u2699", description: "Manage accounts and access levels" },
-{ id: "audit", label: "Activity Logs", icon: "\u2637", description: "Review administrative activity history" },
+
+function NavIcon({ name }: { name: string }) {
+  switch (name) {
+    case "overview":
+      return (
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect width="7" height="9" x="3" y="3" rx="1" />
+          <rect width="7" height="5" x="14" y="3" rx="1" />
+          <rect width="7" height="9" x="14" y="12" rx="1" />
+          <rect width="7" height="5" x="3" y="16" rx="1" />
+        </svg>
+      );
+    case "employees":
+      return (
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
+      );
+    case "analytics":
+      return (
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 3v18h18" />
+          <path d="m19 9-5 5-4-4-3 3" />
+        </svg>
+      );
+    case "onboarding":
+      return (
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+          <path d="M5 3v4" />
+          <path d="M19 17v4" />
+          <path d="M3 5h4" />
+          <path d="M17 19h4" />
+        </svg>
+      );
+    case "recruitment":
+      return (
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+          <rect width="20" height="14" x="2" y="6" rx="2" />
+        </svg>
+      );
+    case "goals":
+      return (
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <circle cx="12" cy="12" r="6" />
+          <circle cx="12" cy="12" r="2" />
+        </svg>
+      );
+    case "lifecycle":
+      return (
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+          <path d="M3 3v5h5" />
+          <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+          <path d="M16 21h5v-5" />
+        </svg>
+      );
+    case "users":
+      return (
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect width="18" height="18" x="3" y="3" rx="2" />
+          <path d="M9 17v-4" />
+          <path d="M12 17v-8" />
+          <path d="M15 17v-2" />
+        </svg>
+      );
+    case "audit":
+      return (
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="16" y1="13" x2="8" y2="13" />
+          <line x1="16" y1="17" x2="8" y2="17" />
+          <polyline points="10 9 9 9 8 9" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
+const NAV_GROUPS = [
+  {
+    group: "CORE WORKSPACE",
+    items: [
+      { id: "overview", label: "Overview", icon: "overview", description: "Executive workforce summary & live indicators" },
+      { id: "employees", label: "Employees 360", icon: "employees", description: "Workforce directory, profiles & org hierarchy" },
+      { id: "analytics", label: "People Analytics", icon: "analytics", description: "Workforce trends, tenure & performance distributions" },
+    ],
+  },
+  {
+    group: "TALENT & PERFORMANCE",
+    items: [
+      { id: "onboarding", label: "AI Onboarding", icon: "onboarding", description: "Hyper-personalized 30-60-90 day journeys", badge: "AI 2.0" },
+      { id: "recruitment", label: "Recruitment & ATS", icon: "recruitment", description: "Candidate pipeline, stages & hiring funnel" },
+      { id: "goals", label: "Performance & Goals", icon: "goals", description: "Employee OKRs, performance tracking & cycles" },
+      { id: "lifecycle", label: "Lifecycle & Exits", icon: "lifecycle", description: "Employee status transitions & retention analytics" },
+    ],
+  },
+  {
+    group: "ADMINISTRATION",
+    items: [
+      { id: "users", label: "Users & Access", icon: "users", description: "Manage system accounts, roles & security permissions" },
+      { id: "audit", label: "Activity Logs", icon: "audit", description: "Audit trail and administrative security logs" },
+    ],
+  },
 ] as const;
+
+const NAV_ITEMS = [
+  { id: "overview", label: "Overview", icon: "overview", description: "Executive workforce summary & live indicators" },
+  { id: "employees", label: "Employees 360", icon: "employees", description: "Workforce directory, profiles & org hierarchy" },
+  { id: "analytics", label: "People Analytics", icon: "analytics", description: "Workforce trends, tenure & performance distributions" },
+  { id: "onboarding", label: "AI Onboarding", icon: "onboarding", description: "Hyper-personalized 30-60-90 day journeys", badge: "AI 2.0" },
+  { id: "recruitment", label: "Recruitment & ATS", icon: "recruitment", description: "Candidate pipeline, stages & hiring funnel" },
+  { id: "goals", label: "Performance & Goals", icon: "goals", description: "Employee OKRs, performance tracking & cycles" },
+  { id: "lifecycle", label: "Lifecycle & Exits", icon: "lifecycle", description: "Employee status transitions & retention analytics" },
+  { id: "users", label: "Users & Access", icon: "users", description: "Manage system accounts, roles & security permissions" },
+  { id: "audit", label: "Activity Logs", icon: "audit", description: "Audit trail and administrative security logs" },
+] as const;
+
 
 type ViewId = (typeof NAV_ITEMS)[number]["id"];
 
@@ -3059,46 +3173,94 @@ const [
 
         <aside className="sidebar">
           <div className="sidebar-brand">
-            <div className="brand-icon"><img src="/humavelios-logo.png" alt="HumaveliOS logo" /></div>
-            <div>
-              <strong>HumaveliOS</strong>
-              <span>People. Work. Intelligence.</span>
+            <div className="brand-icon-wrapper">
+              <img src="/humavelios-logo.png" alt="HumaveliOS logo" className="brand-logo" />
+              <div className="brand-pulse-dot" title="Live Enterprise Sync"></div>
+            </div>
+            <div className="brand-text">
+              <div className="brand-title-row">
+                <strong>HumaveliOS</strong>
+                <span className="brand-version-tag">ENTERPRISE</span>
+              </div>
+              <span className="brand-subtitle">People &amp; Talent Operating System</span>
             </div>
           </div>
 
-          <div className="sidebar-section-label">Workspace</div>
+          <div className="sidebar-org-pill">
+            <div className="org-avatar">🏢</div>
+            <div className="org-info">
+              <span className="org-name">Acme Global Corp</span>
+              <span className="org-status">● Live Sync Active</span>
+            </div>
+          </div>
 
-          <nav className="sidebar-nav" aria-label="HumaveliOS navigation">
-            {NAV_ITEMS.filter((item) => {
-              const role = authUser?.role || "employee";
-              if (item.id === "audit") return role === "admin";
-              if (role === "admin" || role === "hr") return true;
-              if (role === "manager") {
-  return ["overview", "employees", "analytics", "goals"].includes(item.id);
-}
-              return false;
-            }).map((item) => (
-              <button
-                type="button"
-                key={item.id}
-                className={`nav-item ${activeView === item.id ? "active" : ""}`}
-                onClick={() => setActiveView(item.id)}
-              >
-                <span className="nav-item-icon">{item.icon}</span>
-                <span>{item.label}</span>
-              </button>
-            ))}
-          </nav>
+          <div className="sidebar-scrollable-nav">
+            {NAV_GROUPS.map((group) => {
+              const visibleItems = group.items.filter((item) => {
+                const role = authUser?.role || "employee";
+                if (item.id === "audit") return role === "admin";
+                if (role === "admin" || role === "hr") return true;
+                if (role === "manager") {
+                  return ["overview", "employees", "analytics", "goals", "onboarding"].includes(item.id);
+                }
+                return false;
+              });
+
+              if (visibleItems.length === 0) return null;
+
+              return (
+                <div className="sidebar-group" key={group.group}>
+                  <div className="sidebar-section-label">{group.group}</div>
+                  <nav className="sidebar-nav">
+                    {visibleItems.map((item) => {
+                      const isActive = activeView === item.id;
+                      return (
+                        <button
+                          type="button"
+                          key={item.id}
+                          className={`nav-item ${isActive ? "active" : ""}`}
+                          onClick={() => setActiveView(item.id as ViewId)}
+                        >
+                          <span className="nav-item-icon">
+                            <NavIcon name={item.icon} />
+                          </span>
+                          <span className="nav-item-label">{item.label}</span>
+                          {"badge" in item && item.badge && (
+                            <span className="nav-item-badge">{item.badge}</span>
+                          )}
+                          {isActive && <span className="nav-item-indicator"></span>}
+                        </button>
+                      );
+                    })}
+                  </nav>
+                </div>
+              );
+            })}
+          </div>
 
           <div className="sidebar-footer">
-            <div className="sidebar-account">
-              <div className="account-avatar">{authUser?.email?.charAt(0).toUpperCase() || "P"}</div>
-              <div>
-                <strong>{authUser?.email || "HumaveliOS Admin"}</strong>
-                <span>{authUser?.role || "Admin"}</span>
+            <div className="sidebar-account-card">
+              <div className="account-avatar-wrapper">
+                <div className="account-avatar">{authUser?.email?.charAt(0).toUpperCase() || "A"}</div>
+                <div className="account-status-dot"></div>
               </div>
+              <div className="account-details">
+                <strong title={authUser?.email || "Admin"}>{authUser?.email || "Admin Account"}</strong>
+                <span className="account-role-badge">{authUser?.role?.toUpperCase() || "ADMIN"}</span>
+              </div>
+              <button
+                type="button"
+                className="btn-icon-logout"
+                title="Sign out of HumaveliOS"
+                onClick={handleLogout}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+              </button>
             </div>
-            <button type="button" className="sidebar-logout" onClick={handleLogout}>Logout</button>
           </div>
         </aside>
 
@@ -3109,32 +3271,74 @@ const [
           ====================================================== */}
 
       <header className="topbar">
-
-        <div className="page-heading">
-          <span className="eyebrow">HumaveliOS Workspace</span>
-          <h1>{NAV_ITEMS.find((item) => item.id === activeView)?.label}</h1>
-          <p>{NAV_ITEMS.find((item) => item.id === activeView)?.description}</p>
+        <div className="topbar-left">
+          <div className="topbar-breadcrumbs">
+            <span className="breadcrumb-org">HumaveliOS</span>
+            <span className="breadcrumb-divider">/</span>
+            <span className="breadcrumb-module">{NAV_ITEMS.find((item) => item.id === activeView)?.label}</span>
+          </div>
+          <div className="topbar-title-row">
+            <h1>{NAV_ITEMS.find((item) => item.id === activeView)?.label}</h1>
+            <p className="topbar-desc">{NAV_ITEMS.find((item) => item.id === activeView)?.description}</p>
+          </div>
         </div>
 
-        <div className="header-actions">
-          {authUser && (
-            <span className="auth-user">{authUser.email}</span>
-          )}
+        <div className="topbar-center">
+          <div className="global-search-bar">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search directory, skills, teams..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <kbd className="search-shortcut">⌘K</kbd>
+          </div>
+        </div>
+
+        <div className="topbar-right">
+          <div className="topbar-live-badge">
+            <span className="live-pulse"></span>
+            <span>Live HRMS</span>
+          </div>
+
           <button
-            className="refresh-button"
+            className="topbar-action-btn refresh-btn"
             onClick={() => loadDashboard()}
             disabled={loading}
+            title="Refresh workforce records"
           >
-            {loading ? "Loading..." : "Refresh Data"}
+            <svg className={loading ? "spin" : ""} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
+              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+              <path d="M16 21h5v-5" />
+            </svg>
+            <span>{loading ? "Syncing..." : "Sync Data"}</span>
           </button>
-          <button
-            className="logout-button"
-            onClick={() => handleLogout()}
-          >
-            Logout
-          </button>
-        </div>
 
+          {authUser?.role !== "employee" && (
+            <button
+              className="topbar-primary-btn"
+              onClick={() => {
+                if (activeView === "onboarding") {
+                  setShowAiGenerateModal(true);
+                } else if (activeView === "recruitment") {
+                  openAddCandidateModal();
+                } else if (activeView === "goals") {
+                  setShowGoalModal(true);
+                } else {
+                  openAddModal();
+                }
+              }}
+            >
+              <span>+ Quick Action</span>
+            </button>
+          )}
+        </div>
       </header>
 
 
