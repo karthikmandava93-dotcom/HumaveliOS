@@ -1003,6 +1003,19 @@ export default function Home() {
     setGoals,
   ] = useState<PerformanceGoal[]>([]);
 
+  
+  const [
+    sidebarCollapsed,
+    setSidebarCollapsed,
+  ] = useState(false);
+  const [
+    onboardingCategoryFilter,
+    setOnboardingCategoryFilter,
+  ] = useState<string>("All");
+  const [
+    copiedRoadmap,
+    setCopiedRoadmap,
+  ] = useState(false);
   const [
     onboardingPlans,
     setOnboardingPlans,
@@ -1296,6 +1309,70 @@ const [
     }
   }
       
+  
+  function copyRoadmapToClipboard() {
+    if (!selectedPlan) return;
+    const lines = [
+      `# 🚀 30-60-90 Day Onboarding Roadmap for ${selectedPlan.employee_name || "Employee"} (${selectedPlan.role_title} - ${selectedPlan.department})`,
+      `**Level:** ${selectedPlan.experience_level} | **Mentor:** ${selectedPlan.mentor_name || "Assigned Mentor"} | **Progress:** ${selectedPlan.progress}%`,
+      "",
+      `### 🤖 AI Adaptation Rationale:`,
+      `> ${selectedPlan.ai_summary || "Tailored milestone journey"}`,
+      "",
+      "## 📅 Phase 1: Day 1–30 (Foundation & Immersion)",
+      ...selectedPlan.tasks.filter(t => t.phase === "day_30").map(t => `- [${t.is_completed ? "x" : " "}] **Day ${t.due_day}: ${t.title}** (${t.category})${t.description ? ` - ${t.description}` : ""}`),
+      "",
+      "## 📅 Phase 2: Day 31–60 (Autonomy & Integration)",
+      ...selectedPlan.tasks.filter(t => t.phase === "day_60").map(t => `- [${t.is_completed ? "x" : " "}] **Day ${t.due_day}: ${t.title}** (${t.category})${t.description ? ` - ${t.description}` : ""}`),
+      "",
+      "## 📅 Phase 3: Day 61–90 (Impact & Leadership)",
+      ...selectedPlan.tasks.filter(t => t.phase === "day_90").map(t => `- [${t.is_completed ? "x" : " "}] **Day ${t.due_day}: ${t.title}** (${t.category})${t.description ? ` - ${t.description}` : ""}`),
+    ];
+    navigator.clipboard.writeText(lines.join("\n"));
+    setCopiedRoadmap(true);
+    setTimeout(() => setCopiedRoadmap(false), 2500);
+  }
+
+  
+  function applyAiArchetype(archetype: string) {
+    if (archetype === "staff_eng") {
+      setAiForm(prev => ({
+        ...prev,
+        experience_level: "Lead / Executive",
+        focus_areas: "Distributed Systems Architecture, SOC2, Microservices SLA, Tech Talks",
+        custom_notes: "Fast-track environment setup to 3 days. Focus on high-autonomy system RFCs and engineering mentorship.",
+      }));
+    } else if (archetype === "product_designer") {
+      setAiForm(prev => ({
+        ...prev,
+        experience_level: "Senior",
+        focus_areas: "Design System Audit, Figma Tokens, Customer Journey Usability, Sprint Kickoffs",
+        custom_notes: "Lead cross-functional UX workshops with frontend engineers and run usability studies.",
+      }));
+    } else if (archetype === "account_exec") {
+      setAiForm(prev => ({
+        ...prev,
+        experience_level: "Mid-Level",
+        focus_areas: "CRM Pipeline Routing, Pitch Deck Certification, Competitor Objection Handling",
+        custom_notes: "Shadow 8 live discovery calls by Day 15 and deliver mock pitch certification.",
+      }));
+    } else if (archetype === "people_partner") {
+      setAiForm(prev => ({
+        ...prev,
+        experience_level: "Senior",
+        focus_areas: "HRIS Lifecycle, Labor Law Compliance, Pulse Surveys, Retention Analytics",
+        custom_notes: "Audit onboarding cohorts, conduct 30-day employee pulse syncs, and improve hiring funnel velocity.",
+      }));
+    } else if (archetype === "fullstack_dev") {
+      setAiForm(prev => ({
+        ...prev,
+        experience_level: "Mid-Level",
+        focus_areas: "Full-Stack Feature Ownership, CI/CD Pipelines, Unit & Integration Tests, PR Reviews",
+        custom_notes: "Ship starter production PR by Day 20 and own core service module by Day 60.",
+      }));
+    }
+  }
+
   async function loadOnboarding() {
     try {
       setOnboardingLoading(true);
@@ -1622,8 +1699,8 @@ const [
 
   const activePhaseTasks = useMemo(() => {
     if (!selectedPlan) return [];
-    return selectedPlan.tasks.filter((t) => t.phase === activePhaseTab);
-  }, [selectedPlan, activePhaseTab]);
+    return selectedPlan.tasks.filter((t) => t.phase === activePhaseTab && (onboardingCategoryFilter === "All" || t.category === onboardingCategoryFilter));
+  }, [selectedPlan, activePhaseTab, onboardingCategoryFilter]);
 
 
   /* ==========================================================
@@ -3171,28 +3248,42 @@ const [
 
       <div className="app-layout">
 
-        <aside className="sidebar">
+        <aside className={`sidebar ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
           <div className="sidebar-brand">
-            <div className="brand-icon-wrapper">
+            <div className="brand-icon-wrapper" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} style={{ cursor: "pointer" }} title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}>
               <img src="/humavelios-logo.png" alt="HumaveliOS logo" className="brand-logo" width="38" height="38" style={{ width: "38px", height: "38px", maxWidth: "38px", maxHeight: "38px", objectFit: "contain", borderRadius: "8px" }} />
               <div className="brand-pulse-dot" title="Live Enterprise Sync"></div>
             </div>
-            <div className="brand-text">
-              <div className="brand-title-row">
-                <strong>HumaveliOS</strong>
-                <span className="brand-version-tag">ENTERPRISE</span>
+            {!sidebarCollapsed && (
+              <div className="brand-text">
+                <div className="brand-title-row">
+                  <strong>HumaveliOS</strong>
+                  <span className="brand-version-tag">ENTERPRISE</span>
+                </div>
+                <span className="brand-subtitle">People &amp; Talent OS</span>
               </div>
-              <span className="brand-subtitle">People &amp; Talent Operating System</span>
-            </div>
+            )}
+            <button
+              type="button"
+              className="sidebar-collapse-btn"
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              title={sidebarCollapsed ? "Expand Sidebar (Ctrl+B)" : "Collapse Sidebar (Ctrl+B)"}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: sidebarCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s ease" }}>
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+            </button>
           </div>
 
-          <div className="sidebar-org-pill">
-            <div className="org-avatar">🏢</div>
-            <div className="org-info">
-              <span className="org-name">Acme Global Corp</span>
-              <span className="org-status">● Live Sync Active</span>
+          {!sidebarCollapsed && (
+            <div className="sidebar-org-pill">
+              <div className="org-avatar">🏢</div>
+              <div className="org-info">
+                <span className="org-name">Acme Global Corp</span>
+                <span className="org-status">● Live Sync Active</span>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="sidebar-scrollable-nav">
             {NAV_GROUPS.map((group) => {
@@ -3210,7 +3301,7 @@ const [
 
               return (
                 <div className="sidebar-group" key={group.group}>
-                  <div className="sidebar-section-label">{group.group}</div>
+                  {!sidebarCollapsed && <div className="sidebar-section-label">{group.group}</div>}
                   <nav className="sidebar-nav">
                     {visibleItems.map((item) => {
                       const isActive = activeView === item.id;
@@ -3220,12 +3311,13 @@ const [
                           key={item.id}
                           className={`nav-item ${isActive ? "active" : ""}`}
                           onClick={() => setActiveView(item.id as ViewId)}
+                          title={sidebarCollapsed ? `${item.label} — ${item.description}` : undefined}
                         >
                           <span className="nav-item-icon">
                             <NavIcon name={item.icon} />
                           </span>
-                          <span className="nav-item-label">{item.label}</span>
-                          {"badge" in item && item.badge && (
+                          {!sidebarCollapsed && <span className="nav-item-label">{item.label}</span>}
+                          {!sidebarCollapsed && "badge" in item && item.badge && (
                             <span className="nav-item-badge">{item.badge}</span>
                           )}
                           {isActive && <span className="nav-item-indicator"></span>}
@@ -3244,10 +3336,12 @@ const [
                 <div className="account-avatar">{authUser?.email?.charAt(0).toUpperCase() || "A"}</div>
                 <div className="account-status-dot"></div>
               </div>
-              <div className="account-details">
-                <strong title={authUser?.email || "Admin"}>{authUser?.email || "Admin Account"}</strong>
-                <span className="account-role-badge">{authUser?.role?.toUpperCase() || "ADMIN"}</span>
-              </div>
+              {!sidebarCollapsed && (
+                <div className="account-details">
+                  <strong title={authUser?.email || "Admin"}>{authUser?.email || "Admin Account"}</strong>
+                  <span className="account-role-badge">{authUser?.role?.toUpperCase() || "ADMIN"}</span>
+                </div>
+              )}
               <button
                 type="button"
                 className="btn-icon-logout"
@@ -3272,6 +3366,17 @@ const [
 
       <header className="topbar">
         <div className="topbar-left">
+          <button
+            className="topbar-toggle-sidebar-btn"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
           <div className="topbar-breadcrumbs">
             <span className="breadcrumb-org">HumaveliOS</span>
             <span className="breadcrumb-divider">/</span>

@@ -3846,3 +3846,264 @@ td {
   }
 }
 
+
+
+
+/* ==========================================================
+   COLLAPSIBLE SIDEBAR & ADVANCED ONBOARDING STYLES
+   ========================================================== */
+
+.sidebar {
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), padding 0.25s ease;
+}
+
+.sidebar.sidebar-collapsed {
+  width: 72px;
+  min-width: 72px;
+  padding: 18px 8px 16px;
+}
+
+.sidebar-collapse-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin-left: auto;
+  transition: all 0.2s ease;
+}
+
+.sidebar-collapse-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.sidebar-collapsed .sidebar-brand {
+  justify-content: center;
+  padding: 0 0 16px;
+}
+
+.sidebar-collapsed .sidebar-collapse-btn {
+  display: none;
+}
+
+.sidebar-collapsed .nav-item {
+  justify-content: center;
+  padding: 10px;
+}
+
+.sidebar-collapsed .nav-item-indicator {
+  display: none;
+}
+
+.sidebar-collapsed .sidebar-footer {
+  display: flex;
+  justify-content: center;
+}
+
+.sidebar-collapsed .sidebar-account-card {
+  padding: 4px;
+  background: transparent;
+  border: none;
+}
+
+.sidebar-collapsed .btn-icon-logout {
+  display: none;
+}
+
+.topbar-toggle-sidebar-btn {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+.topbar-toggle-sidebar-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+}
+
+/* AI Onboarding Advanced Features */
+
+.onboarding-actions-cluster {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.onboarding-tool-btn {
+  background: #ffffff;
+  border: 1px solid #d8b4fe;
+  color: #6b21a8;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 11px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.onboarding-tool-btn:hover {
+  background: #f3e8ff;
+  border-color: #c084fc;
+}
+
+.onboarding-competency-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.competency-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 6px;
+}
+
+.competency-badge.verified {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+.competency-badge.fast-track {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.competency-badge.focus {
+  background: #fdf4ff;
+  color: #a21caf;
+  border: 1px solid #f5d0fe;
+}
+
+.onboarding-graduation-banner {
+  background: linear-gradient(135deg, #065f46 0%, #047857 100%);
+  border-radius: 12px;
+  padding: 18px 24px;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 4px 16px rgba(4, 120, 87, 0.25);
+}
+
+.graduation-icon {
+  font-size: 32px;
+}
+
+.graduation-text h3 {
+  margin: 0 0 2px 0;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.graduation-text p {
+  margin: 0;
+  font-size: 12px;
+  color: #d1fae5;
+}
+
+.graduation-badge {
+  margin-left: auto;
+  background: #ffffff;
+  color: #065f46;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 6px 14px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.milestone-status-tag {
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.onboarding-filter-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.category-filter-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.category-chip {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.category-chip:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.category-chip.active {
+  background: #1e293b;
+  border-color: #0f172a;
+  color: #ffffff;
+}
+
+.archetype-preset-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.archetype-btn {
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+  color: #6d28d9;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.archetype-btn:hover {
+  background: #ede9fe;
+  border-color: #c4b5fd;
+  transform: translateY(-1px);
+}
