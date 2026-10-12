@@ -3279,8 +3279,8 @@ const [
             <div className="sidebar-org-pill">
               <div className="org-avatar">🏢</div>
               <div className="org-info">
-                <span className="org-name">Acme Global Corp</span>
-                <span className="org-status">● Live Sync Active</span>
+                <span className="org-name">HumaveliOS Workspace</span>
+                <span className="org-status">● Workspace Active</span>
               </div>
             </div>
           )}
@@ -3310,7 +3310,13 @@ const [
                           type="button"
                           key={item.id}
                           className={`nav-item ${isActive ? "active" : ""}`}
-                          onClick={() => setActiveView(item.id as ViewId)}
+                          onClick={() => {
+  setActiveView(item.id as ViewId);
+
+  if (item.id === "onboarding") {
+    void loadOnboarding();
+  }
+}}
                           title={sidebarCollapsed ? `${item.label} — ${item.description}` : undefined}
                         >
                           <span className="nav-item-icon">
@@ -3405,10 +3411,6 @@ const [
         </div>
 
         <div className="topbar-right">
-          <div className="topbar-live-badge">
-            <span className="live-pulse"></span>
-            <span>Live HRMS</span>
-          </div>
 
           <button
             className="topbar-action-btn refresh-btn"
@@ -3422,7 +3424,7 @@ const [
               <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
               <path d="M16 21h5v-5" />
             </svg>
-            <span>{loading ? "Syncing..." : "Sync Data"}</span>
+            <span>{loading ? "Syncing..." : "Refresh Data"}</span>
           </button>
 
           {authUser?.role !== "employee" && (
@@ -4603,6 +4605,149 @@ const [
                 </div>
               </div>
             </div>
+          
+            {/* Generate AI Onboarding Roadmap Modal */}
+            {showAiGenerateModal && (
+              <div
+                role="presentation"
+                onMouseDown={(event) => {
+                  if (event.target === event.currentTarget && !generatingAi) {
+                    setShowAiGenerateModal(false);
+                  }
+                }}
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  zIndex: 9999,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "20px",
+                  background: "rgba(15,23,42,0.58)",
+                  overflowY: "auto"
+                }}
+              >
+                <form
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="onboarding-generate-title"
+                  onSubmit={handleGenerateAiPlan}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  style={{
+                    background: "#ffffff",
+                    color: "#172033",
+                    borderRadius: "16px",
+                    padding: "24px",
+                    width: "100%",
+                    maxWidth: "650px",
+                    maxHeight: "90vh",
+                    overflowY: "auto",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
+                    gap: "16px"
+                  }}
+                >
+                  <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "space-between", gap: "12px" }}>
+                    <div>
+                      <div style={{ color: "#6d4aff", fontSize: "12px", fontWeight: 700 }}>AI ONBOARDING</div>
+                      <h2 id="onboarding-generate-title">Generate Onboarding Roadmap</h2>
+                      <p style={{ color: "#64748b", fontSize: "13px" }}>Create a tailored 30-60-90 day onboarding journey.</p>
+                    </div>
+                    <button type="button" aria-label="Close" disabled={generatingAi} onClick={() => setShowAiGenerateModal(false)}>×</button>
+                  </div>
+
+                  <div>
+                    <label htmlFor="onboarding-employee">Select Employee *</label>
+                    <select
+                      id="onboarding-employee"
+                      required
+                      value={aiForm.employee_id}
+                      disabled={generatingAi || employees.length === 0}
+                      onChange={(event) => setAiForm((prev) => ({ ...prev, employee_id: event.target.value }))}
+                      style={{ display: "block", width: "100%", padding: "10px", marginTop: "6px" }}
+                    >
+                      <option value="">Choose an employee</option>
+                      {employees.map((employee) => (
+                        <option key={employee.id} value={String(employee.id)}>
+                          {employee.full_name} — {employee.designation}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label htmlFor="onboarding-experience">Experience Level *</label>
+                    <select
+                      id="onboarding-experience"
+                      required
+                      value={aiForm.experience_level}
+                      disabled={generatingAi}
+                      onChange={(event) => setAiForm((prev) => ({ ...prev, experience_level: event.target.value }))}
+                      style={{ display: "block", width: "100%", padding: "10px", marginTop: "6px" }}
+                    >
+                      <option value="Entry-Level">Entry-Level</option>
+                      <option value="Mid-Level">Mid-Level</option>
+                      <option value="Senior">Senior</option>
+                      <option value="Lead / Executive">Lead / Executive</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label htmlFor="onboarding-mentor">Mentor Name</label>
+                    <input
+                      id="onboarding-mentor"
+                      value={aiForm.mentor_name}
+                      disabled={generatingAi}
+                      onChange={(event) => setAiForm((prev) => ({ ...prev, mentor_name: event.target.value }))}
+                      style={{ display: "block", width: "100%", padding: "10px", marginTop: "6px", boxSizing: "border-box" }}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="onboarding-focus">Skills &amp; Focus Areas</label>
+                    <textarea
+                      id="onboarding-focus"
+                      rows={3}
+                      value={aiForm.focus_areas}
+                      disabled={generatingAi}
+                      placeholder="Excel, communication, HR operations..."
+                      onChange={(event) => setAiForm((prev) => ({ ...prev, focus_areas: event.target.value }))}
+                      style={{ display: "block", width: "100%", padding: "10px", marginTop: "6px", boxSizing: "border-box" }}
+                    />
+                  </div>
+
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <label htmlFor="onboarding-notes">Additional Onboarding Notes</label>
+                    <textarea
+                      id="onboarding-notes"
+                      rows={3}
+                      value={aiForm.custom_notes}
+                      disabled={generatingAi}
+                      placeholder="Responsibilities, training needs, priorities..."
+                      onChange={(event) => setAiForm((prev) => ({ ...prev, custom_notes: event.target.value }))}
+                      style={{ display: "block", width: "100%", padding: "10px", marginTop: "6px", boxSizing: "border-box" }}
+                    />
+                  </div>
+
+                  {employees.length === 0 && (
+                    <p style={{ gridColumn: "1 / -1", color: "#b45309" }}>No employees found. Add an employee first.</p>
+                  )}
+
+                  {aiFormError && (
+                    <p role="alert" style={{ gridColumn: "1 / -1", color: "#b91c1c" }}>{aiFormError}</p>
+                  )}
+
+                  <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                    <button type="button" disabled={generatingAi} onClick={() => setShowAiGenerateModal(false)}>
+                      Cancel
+                    </button>
+                    <button type="submit" disabled={generatingAi || employees.length === 0}>
+                      {generatingAi ? "Generating..." : "Generate Roadmap"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
           </section>
 
 
